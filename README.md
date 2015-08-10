@@ -11,6 +11,8 @@ Just because you can steal someone's money doesn't mean you should. Don't be a j
 Usage
 -----
 
+NB example.hex is bitcoin addresses HASH160 
+
 Precompute the bloom filter:
 
 `hex2blf example.hex example.blf`
