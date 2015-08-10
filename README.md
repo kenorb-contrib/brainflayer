@@ -13,6 +13,8 @@ Usage
 
 NB example.hex is bitcoin addresses HASH160 
 
+https://bitcointalk.org/index.php?topic=267618.0 on how to find non zero balance addresses
+
 Precompute the bloom filter:
 
 `hex2blf example.hex example.blf`
