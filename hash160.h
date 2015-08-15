@@ -6,8 +6,8 @@
 #include <openssl/ripemd.h>
 
 typedef union hash160_u {
-  unsigned char uc[RIPEMD160_DIGEST_LENGTH];
-  uint32_t      ul[RIPEMD160_DIGEST_LENGTH>>2];
+    unsigned char uc[RIPEMD160_DIGEST_LENGTH];
+    uint32_t      ul[RIPEMD160_DIGEST_LENGTH >> 2];
 } hash160_t;
 
 /*  vim: set ts=2 sw=2 et ai si: */
