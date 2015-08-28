@@ -1,8 +1,10 @@
 /*  Copyright (c) 2015 Ryan Castellucci, All Rights Reserved */
 #ifndef __BRAINFLAYER_BLOOM_H_
 #define __BRAINFLAYER_BLOOM_H_
-
 #include <stdint.h>
+
+// typedef unsigned char bloom_filter;
+
 
 /* 2^32 bits */
 #define BLOOM_SIZE (512*1024*1024)
@@ -34,38 +36,11 @@
 #define BH18(N) (N[3]<<24|N[4]>> 8)
 #define BH19(N) (N[4]<<24|N[0]>> 8)
 
-void bloom_set_hash160(unsigned char *, uint32_t *);
-inline unsigned int bloom_chk_hash160(unsigned char *bloom, uint32_t *h)
-{
-    unsigned int t;
-    t = BH00(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH01(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH02(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH03(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH04(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH05(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH06(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH07(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH08(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH09(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH10(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH11(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH12(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH13(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH14(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH15(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH16(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH17(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH18(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    t = BH19(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
-    return 1;
-}
+unsigned int bloom_chk_hash160(unsigned char *bloom, uint32_t *h);
 
-unsigned char *bloom_open(unsigned char *);
+unsigned char *bloom_open(unsigned char *file_name);
 
-//#define bloom_new() malloc(536870912)
-//unsigned char * bloom_load(unsigned char *);
-//int bloom_save(unsigned char *, unsigned char *);
+void bloom_set_hash160(unsigned char *bloom, uint32_t *h);
 
 /*  vim: set ts=2 sw=2 et ai si: */
 #endif /* __BRAINFLAYER_BLOOM_H_ */

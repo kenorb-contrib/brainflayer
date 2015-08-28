@@ -1,15 +1,35 @@
 /* Copyright (c) 2015 Ryan Castellucci, All Rights Reserved */
-#include <unistd.h>
 #include <string.h>
-#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-
 #include "bloom.h"
+
+unsigned int bloom_chk_hash160(unsigned char *bloom, uint32_t *h)
+{
+    unsigned int t;
+    t = BH00(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH01(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH02(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH03(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH04(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH05(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH06(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH07(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH08(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH09(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH10(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH11(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH12(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH13(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH14(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH15(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH16(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH17(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH18(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    t = BH19(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+    return 1;
+}
 
 void bloom_set_hash160(unsigned char *bloom, uint32_t *h)
 {
@@ -36,68 +56,30 @@ void bloom_set_hash160(unsigned char *bloom, uint32_t *h)
     t = BH19(h); BLOOM_SET_BIT(t);
 }
 
-int _bloom_mmap(unsigned char **bloom, unsigned char *filename)
+unsigned char *bloom_open(unsigned char *file_name)
 {
-    int ret, fd, i;
-    struct stat sb;
-    unsigned char z[1024 * 1024];
+    unsigned char *bloom = malloc(BLOOM_SIZE);
+    if ( bloom == NULL ) { return NULL; }
 
-    if (stat(filename, &sb) == 0) {
-        if (!S_ISREG(sb.st_mode) || sb.st_size != BLOOM_SIZE)
-        { return -100; }
-
-        if ((fd = open(filename, O_RDWR)) < 0)
-        { return fd; }
-
-    } else {
-        /*  Assume the file didn't exist */
-        if ((fd = open(filename, O_RDWR | O_CREAT | O_EXCL, 0660)) < 0)
-        { return fd; }
-
-        /* Make sure the buffer is zeroed */
-        memset(z, 0, sizeof(z));
-        i = BLOOM_SIZE;
-
-        /* pre-write an empty bloom filter */
-        while (i > 0) {
-            if (i > sizeof(z)) {
-                ret = write(fd, z, sizeof(z));
-
-            } else {
-                ret = write(fd, z, i);
-            }
-
-            //fprintf(stderr, "bloom init write %2d %9d %9d\n", fd, ret, i);
-            /* We shouldn't be getting short writes */
-            if (ret != sizeof(z))
-            { return -101; }
-
-            i -= ret;
-        }
+    FILE *file_handle = fopen(file_name, "r");
+    if ( file_handle == NULL ) {
+        fprintf(stderr, "[!] Failed to open bloom filter file %s\n", file_name);
+        exit(1);
     }
 
-    if ((ret = posix_fadvise(fd, 0, BLOOM_SIZE, POSIX_FADV_WILLNEED | POSIX_FADV_RANDOM)) < 0)
-    { return ret; }
+    // Read BLOOM_SIZE elements of one byte
+    // If we didn't read exactly BLOOM_SIZE bytes, something went wrong
+    // If we read one element of BLOOM_SIZE bytes, we may read up to
+    //   an extra BLOOM_SIZE-1 bytes without having a way to detect it
+    // http://stackoverflow.com/q/295994/477563
 
-    /* We should now have a file of the right size open. */
-    *bloom = mmap(NULL, BLOOM_SIZE, PROT_READ, MAP_SHARED | MAP_NORESERVE | MAP_POPULATE, fd, 0);
-    return fd;
-}
+    // In addition, using fread() instead of mmap() is way faster under Cygwin
+    if ( fread(bloom, 1, BLOOM_SIZE, file_handle) != BLOOM_SIZE ) {
+        fprintf(stderr, "[!] Failed to read entire bloom filter from file %s\n", file_name);
+        exit(1);
+    }
 
-unsigned char *bloom_open(unsigned char *filename)
-{
-    int fd;
-    unsigned char *bloom;
-    bloom = malloc(sizeof(void *));
-
-    if ((fd = _bloom_mmap(&bloom, filename) < 0))
-    { return NULL; }
+    fclose(file_handle);
 
     return bloom;
 }
-
-/*
-int bloom_save(unsigned char *filename, unsigned char *bloom);
-*/
-
-/*  vim: set ts=2 sw=2 et ai si: */
