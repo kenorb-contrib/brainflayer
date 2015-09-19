@@ -4,7 +4,7 @@ BINARIES = brainflayer hex2blf blfchk
 LIBS = -lssl -lrt -lcrypto -lz -ldl -lgmp
 CFLAGS = -O3 -flto -pedantic -std=gnu99 -Wall -Wextra -funsigned-char -Wno-pointer-sign -Wno-sign-compare
 COMPILE = gcc $(CFLAGS)
-
+COMPILE_MPI = mpicc $(CFLAGS)
 all: $(BINARIES)
 
 secp256k1/.libs/libsecp256k1.a:
@@ -30,6 +30,8 @@ warpwallet.o: warpwallet.c scrypt-jane/scrypt-jane.h
 
 brainwalletio.o: brainwalletio.c scrypt-jane/scrypt-jane.h
 
+brainflayer.o: brainflayer.c
+	$(COMPILE_MPI) -c $< -o $@
 %.o: %.c
 	$(COMPILE) -c $< -o $@
 
@@ -40,7 +42,7 @@ hex2blf: hex2blf.o hex.o bloom.o
 	$(COMPILE) -static $^ $(LIBS) -o $@
 
 brainflayer: brainflayer.o hex.o bloom.o warpwallet.o brainwalletio.o brainv2.o secp256k1/.libs/libsecp256k1.a scrypt-jane/scrypt-jane.o
-	$(COMPILE) -static $^ $(LIBS) -o $@
+	$(COMPILE_MPI) $^ $(LIBS) -o $@
 
 brainflayer-alt: brainflayer.o hex.o bloom.o warpwallet.o brainwalletio.o brainv2.o secp256k1/.libs/libsecp256k1.a scrypt-jane/scrypt-jane.o
 	$(COMPILE) -static $^ $(LIBS) -o $@

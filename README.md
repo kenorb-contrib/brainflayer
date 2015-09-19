@@ -1,4 +1,4 @@
-Brainflayer
+Brainflayer - parallelized version
 ===========
 
 Brainflayer is a Proof-of-Concept brainwallet cracking tool that uses
@@ -9,6 +9,12 @@ It was released as part of my DEFCON talk about cracking brainwallets
 The name is a reference to [Mind Flayers](https://en.wikipedia.org/wiki/Illithid),
 a race of monsters from the Dungeons & Dragons role-playing game. They eat
 brains, psionically enslave people and look like lovecraftian horrors.
+
+Parallelized Version
+----------
+Distributes the password list on several processes, e.g: 
+`mpirun -n 16 ./brainflayer -b example.blf -i crackstation-human-only.txt`
+Also take look at this: http://www.juliu5.com/brainflayer-parallelized/
 
 Disclaimer
 ----------
@@ -30,7 +36,7 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
-Usage
+Usage (non-parallel)
 -----
 
 ### Basic
@@ -88,7 +94,9 @@ you'll come up with something.
 Building
 --------
 
-Should compile on Linux with `make` provided you have the required devel libs
+• Should compile on Linux with `make` provided you have the required devel libs
 installed (at least openssl and gpm are required along with libsecp256k1's
 build dependencies). I really need to learn autotools. If you file an issue
 about a build failure in libscp256k1 I will close it.
+
+• You need MPI installed!
