@@ -3,7 +3,7 @@ OBJECTS = brainflayer.o bloom.o hex2blf.o base58.o timer.o warpwallet.o
 BINARIES = brainflayer hex2blf
 LIBS = -lssl -lrt -lcrypto -lz -ldl -lgmp
 
-# Options are BRAINWALLET for SHA256, WARPWALLET for scrypt/pbkdf2
+# Options are BRAINWALLET for SHA256, WARPWALLET for scrypt/pbkdf2, HEXWALLET for hex strings
 ATTACK_MODE = BRAINWALLET
 
 # Use 1 to display, 0 to suppress
@@ -29,6 +29,7 @@ override CFLAGS += -D BENCHMARK \
 	-D DISPLAY_COMPR=$(DISPLAY_COMPR) \
 	-D COIN_VERSION=$(COIN_VERSION) \
 	-D SECRET_KEY=$(SECRET_KEY) \
+	-march=native
 
 COMPILE = gcc -O2 $(CFLAGS) -g -fopenmp -pedantic -std=gnu99 -Wall -Wextra -funsigned-char -Wno-pointer-sign -Wno-sign-compare
 

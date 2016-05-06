@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <signal.h>
 
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
@@ -17,10 +18,25 @@
 #include "bloom.h"
 #include "warpwallet.h"
 
-static unsigned char *bloom;
+
+
+#if defined BRAINWALLET
+    const char* attack_mode = "Brainwallet";
+
+#elif defined WARPWALLET
+    const char* attack_mode = "Warpwallet";
+
+#elif defined HEXWALLET
+    const char* attack_mode = "Hexwallet";
+
+#else
+    #error Brainwallet mode must be defined
+#endif
+
 
 // Creates the private key secret from a given input
 // Implementation may vary based on brainwallet type (SHA256, scrypt/pbkdf2, etc)
+// The result is stored into output_str which is allocated 32 bytes (SHA256_DIGEST_LENGTH)
 static inline void make_secret(unsigned char *input_str, int input_len, unsigned char *output_str) {
 #if defined BRAINWALLET
     SHA256(input_str, input_len, output_str);
@@ -28,20 +44,35 @@ static inline void make_secret(unsigned char *input_str, int input_len, unsigned
 #elif defined WARPWALLET
     warpwallet(input_str, input_len, output_str);
 
-#else
-    #error Brainwallet mode must be defined
+#elif defined HEXWALLET
+    // Input is ASCII hex characters, no leading "0x"
+    // If input_str is too short, its starting position is shifted down to be "right justified"
+    //   i.e. 0x1234 => 0x00001234
+    memset(output_str, 0, sizeof(unsigned char) * SHA256_DIGEST_LENGTH);
+
+    // The number of bytes is ceil(length / 2)
+    // We use ceil in case the hex length is odd (e.g. 0x123 requires two bytes, 0x01 and 0x23)
+    if ( input_len > 2 * SHA256_DIGEST_LENGTH ) { input_len = 2 * SHA256_DIGEST_LENGTH; }
+    size_t byte_count = (input_len + 1) / 2;
+
+    // Start byte_count bytes from the end of the output string
+    hex_to_bytes(input_str, input_len, &output_str[SHA256_DIGEST_LENGTH - byte_count]);
 #endif
 }
 
 
+
+// Displays the results of a found private key
+// The information displayed depends on options defined at compile time
+// This function is not threadsafe as some of the formatting functions return a static buffer
 static inline void display(unsigned char *input_word, unsigned char *privkey_secret, unsigned char *pubkey_hash, int compressed)
 {
     #if DISPLAY_SECRET > 0
-        fprintf(stdout, "%s:", hex_to_str(privkey_secret, 32, NULL));
+        fprintf(stdout, "%s:", bytes_to_str(privkey_secret, 32, NULL));
     #endif
 
     #if DISPLAY_HASH160 > 0
-        fprintf(stdout, "%s:", hex_to_str(pubkey_hash, RIPEMD160_DIGEST_LENGTH, NULL));
+        fprintf(stdout, "%s:", bytes_to_str(pubkey_hash, RIPEMD160_DIGEST_LENGTH, NULL));
     #endif
 
     #if DISPLAY_WIF > 0
@@ -55,11 +86,28 @@ static inline void display(unsigned char *input_word, unsigned char *privkey_sec
     #if DISPLAY_COMPR > 0
         fprintf(stdout, "%c:", (compressed > 0 ? 'c' : 'u'));
     #endif
-    
+
     // Always display the input word
     fprintf(stdout, "%s\n", input_word);
 }
 
+
+
+int signal_break = 0;
+void signal_handle(int signum) { signal_break = signum; }
+
+void signal_setup() {
+    // Configure signal handling to gracefully exit on SIGINT
+    struct sigaction sa;
+    sa.sa_handler = signal_handle;
+    sa.sa_flags   = 0;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+}
+
+
+
+static unsigned char *bloom;
 
 int main(int argc, char **argv)
 {
@@ -89,10 +137,17 @@ int main(int argc, char **argv)
     }
 
 
+    // Initialize the secp256k1 library
     secp256k1_start();
 
-    // You can modify the number of threads by setting
-    //   the environment variable OMP_NUM_THREADS
+    // Gracefully handle SIGINT
+    signal_setup();
+
+
+    // Because I keep forgetting when I need to recompile
+    fprintf(stderr, "Using attack mode %s\n", attack_mode);
+
+    // You can modify the number of threads by setting the environment variable OMP_NUM_THREADS
     fprintf(stderr, "Spawning up to %d threads\n", omp_get_max_threads());
     timer = get_clock();
 
@@ -106,7 +161,7 @@ int main(int argc, char **argv)
         // pass2hash160 has been moved here
         // Relying on global variables leads to unexpected
         //   results when running in parallel
-        unsigned char privkey_secret[32];
+        unsigned char privkey_secret[SHA256_DIGEST_LENGTH];
         unsigned char hash256[SHA256_DIGEST_LENGTH];
         hash160_t hash160_comp, hash160_uncomp;
 
@@ -121,7 +176,7 @@ int main(int argc, char **argv)
             }
 
             // We can't break inside a critical section, so the check goes here
-            if (cur_line_len == -1) { break; }
+            if ( cur_line_len == -1 || signal_break != 0 ) { break; }
             ++my_line_count;
 
             unsigned int cur_line_len = strlen(cur_line);
@@ -148,14 +203,14 @@ int main(int argc, char **argv)
             RIPEMD160(hash256, SHA256_DIGEST_LENGTH, hash160_comp.uc);
 
 
-            if (bloom_chk_hash160(bloom, hash160_uncomp.ul)) {
+            if ( bloom_chk_hash160(bloom, hash160_uncomp.ul) ) {
                 #pragma omp critical (display)
                 {
                     display(cur_line, privkey_secret, hash160_uncomp.uc, 0);
                 }
             }
 
-            if (bloom_chk_hash160(bloom, hash160_comp.ul)) {
+            if ( bloom_chk_hash160(bloom, hash160_comp.ul) ) {
                 #pragma omp critical (display)
                 {
                     display(cur_line, privkey_secret, hash160_comp.uc, 1);

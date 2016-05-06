@@ -48,12 +48,20 @@ unsigned char *hash256_to_wif(const unsigned char *privkey_secret, int compresse
 
 // Print the contents of str as hex to stream, optionally adding a newline
 // Useful for debugging intermediate hashes for correctness
-void hex_to_stream(FILE *stream, const unsigned char *str, int str_len, int add_newline);
+void bytes_to_stream(FILE *stream, const unsigned char *str, int str_len, int add_newline);
+
 
 // Convert the input string to ASCII hex
 // Returns a pointer to a buffer with the hex string
 // If out_str is not NULL, store it there
 // Useful for debugging intermediate hashes for correctness
-char* hex_to_str(unsigned char *binary_str, int str_len, unsigned char *out_str);
+char* bytes_to_str(unsigned char *binary_str, int str_len, unsigned char *out_str);
+
+
+// Converts a single hex character into a byte value
+unsigned char hexchr(unsigned char c);
+
+// Converts an ASCII hex string to a byte array
+void hex_to_bytes(unsigned char *hex_str, int str_len, unsigned char *out_str);
 
 #endif

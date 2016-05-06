@@ -120,7 +120,7 @@ unsigned char *hash256_to_wif(const unsigned char *privkey_secret, int compresse
 }
 
 
-void hex_to_stream(FILE *stream, const unsigned char *str, int str_len, int add_newline) {
+void bytes_to_stream(FILE *stream, const unsigned char *str, int str_len, int add_newline) {
     int i = 0;
     for (i = 0; i < str_len; i++) {
         fprintf(stream, "%02x", str[i]);
@@ -130,7 +130,7 @@ void hex_to_stream(FILE *stream, const unsigned char *str, int str_len, int add_
 }
 
 
-char* hex_to_str(unsigned char *binary_str, int str_len, unsigned char *out_str) {
+char* bytes_to_str(unsigned char *binary_str, int str_len, unsigned char *out_str) {
     static unsigned char *hex_buffer = NULL;
 
     if ( !hex_buffer ) {
@@ -151,4 +151,43 @@ char* hex_to_str(unsigned char *binary_str, int str_len, unsigned char *out_str)
     out_str[2*pos + 1] = 0;
 
     return out_str;
+}
+
+
+// Converts a single hex character into a byte value
+unsigned char hexchr(unsigned char c) {
+    if ( c >= '0' && c <= '9' ) {
+        return c - '0';
+
+    } else if ( c >= 'A' && c <= 'F' ) {
+        return c - 'A' + 10;
+
+    } else if ( c >= 'a' && c <= 'f' ) {
+        return c - 'a' + 10;
+
+    } else {
+        return -1;
+    }
+}
+
+
+// Converts an ASCII hex string to a byte array
+void hex_to_bytes(unsigned char *hex_str, int str_len, unsigned char *out_str) {
+    int in_pos = 0, out_pos = 0;
+
+    // We have an odd-length hex string (e.g. 0x123)
+    // Handle the first character as a low nibble (e.g. 0x0123)
+    if ( str_len % 2 != 0 ) {
+        out_str[out_pos] = hexchr(hex_str[in_pos]);
+        in_pos++;
+        out_pos++;
+    }
+
+    // Process the rest of the hex characters
+    for (; in_pos < str_len; in_pos += 2, out_pos += 1) {
+        unsigned char high_nibble = hexchr(hex_str[in_pos + 0]);
+        unsigned char  low_nibble = hexchr(hex_str[in_pos + 1]);
+
+        out_str[out_pos] = (high_nibble << 4) | low_nibble;
+    }
 }

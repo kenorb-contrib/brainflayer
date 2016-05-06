@@ -1,3 +1,7 @@
+# Test files
+*.hex
+*.blf
+
 # Object files
 *.o
 *.ko
