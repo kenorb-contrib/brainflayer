@@ -13,8 +13,14 @@
 
 #include <arpa/inet.h> /*  for ntohl/htonl */
 
+#include <math.h> /* pow/exp */
+
+#include "hex.h"
 #include "bloom.h"
 #include "hash160.h"
+
+const double k_hashes = 20;
+const double m_bits   = 4294967296;
 
 int main(int argc, char **argv) {
   hash160_t hash;
@@ -23,8 +29,10 @@ int main(int argc, char **argv) {
   struct stat sb;
   unsigned char *bloom, *hashfile, *bloomfile;
   FILE *f, *b;
-  size_t line_sz = 1024;
+  size_t line_sz = 1024, line_ct = 0;
   char *line;
+
+  double err_rate;
 
   if (argc != 3) {
     fprintf(stderr, "[!] Usage: %s hashfile.hex bloomfile.blf\n", argv[0]);
@@ -78,16 +86,9 @@ int main(int argc, char **argv) {
   stat(hashfile, &sb);
   fprintf(stderr, "[*] Loading hash160s from '%s' \033[s  0.0%%", hashfile);
   while (getline(&line, &line_sz, f) > 0) {
-    if (sscanf(line, "%08x%08x%08x%08x%08x", &hash.ul[0],
-        &hash.ul[1], &hash.ul[2], &hash.ul[3], &hash.ul[4])) {
-      /* fix the byte order */
-      hash.ul[0] = htonl(hash.ul[0]);
-      hash.ul[1] = htonl(hash.ul[1]);
-      hash.ul[2] = htonl(hash.ul[2]);
-      hash.ul[3] = htonl(hash.ul[3]);
-      hash.ul[4] = htonl(hash.ul[4]);
-      bloom_set_hash160(bloom, hash.ul);
-    }
+    ++line_ct;
+    unhex(line, strlen(line), hash.uc, sizeof(hash.uc));
+    bloom_set_hash160(bloom, hash.ul);
 
     if ((++i & 0x3ffff) == 0) {
       pct = 100.0 * ftell(f) / sb.st_size;
@@ -96,6 +97,9 @@ int main(int argc, char **argv) {
     }
   }
   fprintf(stderr, "\033[u 100.0%%\n");
+
+  err_rate = pow(1 - exp(-k_hashes * line_ct / m_bits), k_hashes);
+  fprintf(stderr, "[*] Loaded %zu hashes, false positive rate: ~%.3e (1 in ~%.3e)\n", line_ct, err_rate, 1/err_rate);
 
   fprintf(stderr, "[*] Writing bloom filter to '%s'...\n", bloomfile);
   if ((fwrite(bloom, BLOOM_SIZE, 1, b)) != 1) {
