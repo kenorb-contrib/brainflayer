@@ -41,3 +41,11 @@ filehex
 # misc
 old
 notes
+
+*.py
+*.txt
+foo*
+*.pl
+*.blf
+*.bin
+*.tab
