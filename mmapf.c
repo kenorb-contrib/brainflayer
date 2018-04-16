@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 
@@ -49,7 +48,7 @@ int munmapf(mmapf_ctx *ctx) {
   return 0;
 }
 
-int mmapf(mmapf_ctx *ctx, const unsigned char *filename, size_t size, int flags) {
+int mmapf(mmapf_ctx *ctx, const char *filename, size_t size, int flags) {
   size_t page_sz = sysconf(_SC_PAGESIZE);
   struct stat sb;
 
