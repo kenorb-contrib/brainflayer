@@ -12,8 +12,6 @@ import sys
 import getopt
 import random
 
-#sys.stdout = open('output.txt','wt')
-
 help_message = '''
 Bip39 12 Word Random Generator By TheRealLordFractal
 Output File Saved as 12words.txt
