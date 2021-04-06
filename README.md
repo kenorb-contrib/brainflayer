@@ -161,3 +161,11 @@ Guangyan Song contributed the code in `ec_pubkey_fast.c` which more than
 doubles the speed of public key computations compared with the stock secp256k1
 library from Bitcoin. This code uses a much larger table for ec multiplication
 and optimized routines for ec addition and doubling.
+
+Install
+-------
+sudo apt install build-essential libgmp-dev libssl-dev
+
+Install libtool:
+
+sudo apt-get update -y -qqq --fix-missing && sudo apt-get install -y -qqq autoconf libtool
