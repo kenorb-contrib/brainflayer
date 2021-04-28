@@ -1,0 +1,15 @@
+./brainflayer -v -b btcaddress.blf -i wordlist.txt -o result.txt
+
+./brainflayer -v -b btcaddress.blf -f btcaddress.bin -i wordlist.txt -o result.txt
+
+./brainflayer -v -b 35.blf -i wordlist.txt -o result.txt
+./brainflayer -v -b 35.blf -i bads.txt -o result.txt
+./brainflayer -v -b 35.blf -i realuniq.lst -o result.txt
+
+sort -u 35.hex | xxd -r -p > 35.bin
+
+./generate2words.py -w wordlist.txt -n 90000000000 | ./brainflayer -v  -o result.txt -b 35.blf 
+./2.py -n 90000000000 | ./brainflayer -v  -o result.txt -b 35.blf 
+
+
+./brain12.py -w wordlist1.txt -n 90000000000 | ./brainflayer -v  -o result.txt -b 35.blf 
