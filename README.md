@@ -32,6 +32,7 @@ Telegram : @XopMC
 
 Буду рад любой обратной связи!
 
+(Так же сделал перевод описания использования программы см [Usage RUS](https://github.com/XopMC/brainflayer-Windows#usage-rus-использование))
 
 Brainflayer
 ===========
