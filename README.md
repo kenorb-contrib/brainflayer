@@ -7,6 +7,7 @@ This software will allow you to use brainflayer functions directly in Windows
 You can also use this program to search through the database of words / passwords.
 And you can use third-party generators ... BUT I have not yet figured out how to display information on the screen when using generators ...
 brainflayer works with them, but displays information only at the end of the generator's work (see screenshot).
+![Brain](https://user-images.githubusercontent.com/89750173/144838729-8cbd56a6-27ad-4a0b-a3b6-a7ba2881420a.PNG)
 
 If you know or understand how to fix it, please write to me
 
@@ -23,6 +24,7 @@ Russian
 Вы так же можете использовать эту программу для поиска через базу слов/паролей
 И можете использовать сторонние генераторы... НО я пока не понял, как при использовании генераторов выводить информацию на экран...
 brainflayer работает ними, но информацию выводит только по окончанию работы генератора (см. скриншот).
+![Brain](https://user-images.githubusercontent.com/89750173/144838729-8cbd56a6-27ad-4a0b-a3b6-a7ba2881420a.PNG)
 
 Если вы знаете или поняли как это исправить, прошу написать мне
 
