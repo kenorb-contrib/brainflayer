@@ -1,3 +1,38 @@
+Description/ Описание
+===========
+English
+-------
+This software will allow you to use brainflayer functions directly in Windows
+
+You can also use this program to search through the database of words / passwords.
+And you can use third-party generators ... BUT I have not yet figured out how to display information on the screen when using generators ...
+brainflayer works with them, but displays information only at the end of the generator's work (see screenshot).
+
+If you know or understand how to fix it, please write to me
+
+Telegram: @XopMC
+
+or open "New issue" on GitHub.
+
+I would be glad to receive any feedback!
+
+Russian
+-------
+Этот софт позволит вам использовать функции Brainflayer прямо в Windows. 
+
+Вы так же можете использовать эту программу для поиска через базу слов/паролей
+И можете использовать сторонние генераторы... НО я пока не понял, как при использовании генераторов выводить информацию на экран...
+brainflayer работает ними, но информацию выводит только по окончанию работы генератора (см. скриншот).
+
+Если вы знаете или поняли как это исправить, прошу написать мне
+
+Telegram : @XopMC 
+
+или откройте "New issue " в GitHub.
+
+Буду рад любой обратной связи!
+
+
 Brainflayer
 ===========
 
@@ -37,22 +72,22 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
-Usage
------
+Usage ENG:
+--------
 
 ### Basic
 
 Precompute the bloom filter:
 
-`hex2blf example.hex example.blf`
+`hex2blf.exe example.hex example.blf`
 
 Run Brainflayer against it:
 
-`brainflayer -v -b example.blf -i phraselist.txt`
+`brainflayer.exe -v -b example.blf -i phraselist.txt`
 
 or
 
-`your_generator | brainflayer -v -b example.blf`
+`your_generator | brainflayer.exe -v -b example.blf`
 
 ### Advanced
 
@@ -122,9 +157,100 @@ It's possible to combine two or more of these, e.g. the default is `-c uc`.
 An incremental private key brute force mode is available for fans of
 [directory.io](http://www.directory.io/), try
 
-`brainflayer -v -I 0000000000000000000000000000000000000000000000000000000000000001 -b example.blf`
+`brainflayer.exe -v -I 0000000000000000000000000000000000000000000000000000000000000001 -b example.blf`
 
-See the output of `brainflayer -h` for more detailed usage info.
+See the output of `brainflayer.exe -h` for more detailed usage info.
+
+Also included is `blfchk` - you can pipe it hex encoded hash160 to check a
+bloom filter file for. It's very fast - it can easily check millions of
+hash160s per second. Not entirely sure what this is good for but I'm sure
+you'll come up with something.
+
+Usage RUS (Использование):
+--------
+
+### Базовое
+
+Высчитайте блум фильтр:
+
+`hex2blf.exe пример.hex пример.blf`
+
+Запустите Brainflayer с этими параметрами:
+
+`brainflayer.exe -v -b пример.blf -i список_фраз.txt`
+
+или
+
+`сторонний_генератор | brainflayer.exe -v -b пример.blf`
+
+### Продвинутое использование
+
+На дизайн Brainflayer сильно повлияла [философия Unix] (https://en.wikipedia.org/wiki/Unix_philosophy).  
+Он (в основном) делает одно: охотится за вкусными мозговыми кошельками.  
+Основная особенность - это не генерация возможных паролей / парольных фраз.  
+Есть много других замечательных инструментов, которые делают это,  
+и Brainflayer будет рад, если вы подключите их к нему.  
+
+К сожалению, в настоящее время brainflayer не поддерживает многопоточность.  
+Если вы хотите, задействовать несколько ядер, вам придется придумать способ самостоятельно распределять работу (могут помочь опции -n и -k в brainflayer).  
+В моем тестировании, brainflayer значительно выигрывает от многопоточности, поэтому вы можете запустить две копии на каждое физическое ядро.  
+Также стоит отметить, что brainflayer размещает свои файлы данных в общей памяти  
+поэтому дополнительные процессы brainflayer не используют столько дополнительной оперативной памяти.  
+
+
+Хотя это и не обязательно, настоятельно рекомендуется использовать следующие параметры:  
+
+
+* `-m ФАЙЛ` Загрузить таблицу ecmult из `ФАЙЛ` (сгенерированную с помощью ecmtabgen),  
+            а не вычислять ее при запуске.  
+            Это позволит нескольким процессам Brainflayer совместно использовать одну и ту же таблицу в памяти  
+            и значительно сократит время запуска при использовании большой таблицы.  
+
+* `-f ФАЙЛ` Проверка что Блум фильтр соответствует списку всех hash160 `FILE`,   
+            сгенерированных с помощью `sort -u example.hex | xxd -r -p> example.bin`  
+            В сети Биткойн существует достаточно адресов, чтобы вызвать ложные срабатывания в фильтре Блума, эта опция подавит их.  
+
+Brainflayer supports a few other types of input via the `-t` option:
+
+* `-t keccak` passphrases to be hashed with keccak256 (some ethereum tools)
+
+* `-t priv` raw private keys - this can be used to support arbitrary
+            deterministic wallet schemes via an external program. Any trailing
+            data after the hex encoded private key will be included in
+            brainflayer's output as well, for reference. See also the `-I`
+            option if you want to crack a bunch of sequential keys, which has
+            special speed optimizations.
+
+* `-t warp` salts or passwords/passphrases for WarpWallet
+
+* `-t bwio` salts or passwords/passphrases for brainwallet.io
+
+* `-t bv2`  salts or passwords/passphrases for brainv2 - this one is *very* slow
+            on CPU, however the parameter choices make it a great target for GPUs
+            and FPGAs.
+
+* `-t rush` passwords for password-protected rushwallets - pass the fragment (the
+            part of the url after the #) using `-r`. Almost all wrong passwords
+            will be rejected even without a bloom filter.
+
+Address types can be specified with the `-c` option:
+
+* `-c u` uncompressed addresses
+
+* `-c c` compressed addresses
+
+* `-c e` ethereum addresses
+
+* `-c x` most signifigant bits of public point's x coordinate
+
+It's possible to combine two or more of these, e.g. the default is `-c uc`.
+
+An incremental private key brute force mode is available for fans of
+[directory.io](http://www.directory.io/), try
+
+`brainflayer.exe -v -I 0000000000000000000000000000000000000000000000000000000000000001 -b example.blf`
+
+See the output of `brainflayer.exe -h` for more detailed usage info.
 
 Also included is `blfchk` - you can pipe it hex encoded hash160 to check a
 bloom filter file for. It's very fast - it can easily check millions of
@@ -161,3 +287,5 @@ Guangyan Song contributed the code in `ec_pubkey_fast.c` which more than
 doubles the speed of public key computations compared with the stock secp256k1
 library from Bitcoin. This code uses a much larger table for ec multiplication
 and optimized routines for ec addition and doubling.
+
+Compiled by @XopMC for https://t.me/brythbit
