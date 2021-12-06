@@ -72,6 +72,96 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
+Usage RUS (Использование):
+--------
+
+### Базовое
+
+Высчитайте блум фильтр:
+
+`hex2blf.exe пример.hex пример.blf`
+
+Запустите Brainflayer с этими параметрами:
+
+`brainflayer.exe -v -b пример.blf -i список_фраз.txt`
+
+или
+
+`сторонний_генератор | brainflayer.exe -v -b пример.blf`
+
+### Продвинутое использование
+
+На дизайн Brainflayer сильно повлияла [философия Unix] (https://en.wikipedia.org/wiki/Unix_philosophy).  
+Он (в основном) делает одно: охотится за вкусными мозговыми кошельками.  
+Основная особенность - это не генерация возможных паролей / парольных фраз.  
+Есть много других замечательных инструментов, которые делают это,  
+и Brainflayer будет рад, если вы подключите их к нему.  
+
+К сожалению, в настоящее время brainflayer не поддерживает многопоточность.  
+Если вы хотите, задействовать несколько ядер, вам придется придумать способ самостоятельно распределять работу (могут помочь опции -n и -k в brainflayer).  
+В моем тестировании, brainflayer значительно выигрывает от многопоточности, поэтому вы можете запустить две копии на каждое физическое ядро.  
+Также стоит отметить, что brainflayer размещает свои файлы данных в общей памяти  
+поэтому дополнительные процессы brainflayer не используют столько дополнительной оперативной памяти.  
+
+
+Хотя это и не обязательно, настоятельно рекомендуется использовать следующие параметры:  
+
+
+* `-m ФАЙЛ` Загрузить таблицу ecmult из `ФАЙЛ` (сгенерированную с помощью ecmtabgen),  
+            а не вычислять ее при запуске.  
+            Это позволит нескольким процессам Brainflayer совместно использовать одну и ту же таблицу в памяти  
+            и значительно сократит время запуска при использовании большой таблицы.  
+
+* `-f ФАЙЛ` Проверка что Блум фильтр соответствует списку всех hash160 `FILE`,   
+            сгенерированных с помощью `sort -u пример.hex | xxd -r -p> пример.bin`  
+            В сети Биткойн существует достаточно адресов, чтобы вызвать ложные срабатывания в фильтре Блума, эта опция подавит их.  
+
+Brainflayer поддерживает несколько других типов ввода с помощью опции `-t`: 
+
+* `-t keccak` парольные фразы хешированные с помощью keccak256 (некоторые инструменты ethereum)
+
+* `-t priv` необработанные закрытые ключи  
+            их можно через внешний генератор, выдающий hex ключи.  
+            Любые конечные данные после закрытого ключа, закодированного в шестнадцатеричном формате,  
+            также будут включены в вывод "brainflayer" для справки.  
+            См. Также параметр `-I`, который имеет специальную оптимизацию скорости - если вы хотите взломать "связку последовательных ключей" (sequential keys)  
+            
+
+* `-t warp` salt или пароли/фразы для WarpWallet
+
+* `-t bwio` salt или пароли/фразы для brainwallet.io
+
+* `-t bv2`  salt или пароли/фразы для brainv2 - это * очень * медленный режим на CPU
+            однако выбор параметров делает его отличной целью для графических процессоров и FPGA. 
+
+* `-t rush` пароли для защищенных rushwallets - передать фрагмент (часть URL-адреса после #)
+            с помощью `-r`. Почти все неправильные пароли будут отклонены даже без блум фильтра. 
+            
+Типы адресов могут быть указаны с помощью опции `-c`:
+
+* `-c u` несжатые адреса
+
+* `-c c` сжатые адреса
+
+* `-c e` Ethereum адреса
+
+* `-c x` наиболее значимые биты публичных точек x координаты
+
+Можно комбинировать два или более из них, например по умолчанию - `-c uc`.
+
+Для фанатов [directory.io](http://www.directory.io/) доступен режим инкрементального перебора закрытого ключа. 
+
+Попробуйте:
+
+`brainflayer.exe -v -I 0000000000000000000000000000000000000000000000000000000000000001 -b example.blf`
+
+Смотрите `brainflayer.exe -h` для более подробной информации об использовании.
+
+Также `blfchk` - вы можете передать ему в шестнадцатеричном формате hash160 для проверки файла фильтра Блума.  
+Это очень быстро - может легко проверять миллионы хешей160 в секунду.  
+Не совсем уверен, для чего это нужно, но я уверен, что вы что-нибудь придумаете.  
+
+
 Usage ENG:
 --------
 
@@ -166,96 +256,6 @@ bloom filter file for. It's very fast - it can easily check millions of
 hash160s per second. Not entirely sure what this is good for but I'm sure
 you'll come up with something.
 
-Usage RUS (Использование):
---------
-
-### Базовое
-
-Высчитайте блум фильтр:
-
-`hex2blf.exe пример.hex пример.blf`
-
-Запустите Brainflayer с этими параметрами:
-
-`brainflayer.exe -v -b пример.blf -i список_фраз.txt`
-
-или
-
-`сторонний_генератор | brainflayer.exe -v -b пример.blf`
-
-### Продвинутое использование
-
-На дизайн Brainflayer сильно повлияла [философия Unix] (https://en.wikipedia.org/wiki/Unix_philosophy).  
-Он (в основном) делает одно: охотится за вкусными мозговыми кошельками.  
-Основная особенность - это не генерация возможных паролей / парольных фраз.  
-Есть много других замечательных инструментов, которые делают это,  
-и Brainflayer будет рад, если вы подключите их к нему.  
-
-К сожалению, в настоящее время brainflayer не поддерживает многопоточность.  
-Если вы хотите, задействовать несколько ядер, вам придется придумать способ самостоятельно распределять работу (могут помочь опции -n и -k в brainflayer).  
-В моем тестировании, brainflayer значительно выигрывает от многопоточности, поэтому вы можете запустить две копии на каждое физическое ядро.  
-Также стоит отметить, что brainflayer размещает свои файлы данных в общей памяти  
-поэтому дополнительные процессы brainflayer не используют столько дополнительной оперативной памяти.  
-
-
-Хотя это и не обязательно, настоятельно рекомендуется использовать следующие параметры:  
-
-
-* `-m ФАЙЛ` Загрузить таблицу ecmult из `ФАЙЛ` (сгенерированную с помощью ecmtabgen),  
-            а не вычислять ее при запуске.  
-            Это позволит нескольким процессам Brainflayer совместно использовать одну и ту же таблицу в памяти  
-            и значительно сократит время запуска при использовании большой таблицы.  
-
-* `-f ФАЙЛ` Проверка что Блум фильтр соответствует списку всех hash160 `FILE`,   
-            сгенерированных с помощью `sort -u example.hex | xxd -r -p> example.bin`  
-            В сети Биткойн существует достаточно адресов, чтобы вызвать ложные срабатывания в фильтре Блума, эта опция подавит их.  
-
-Brainflayer supports a few other types of input via the `-t` option:
-
-* `-t keccak` passphrases to be hashed with keccak256 (some ethereum tools)
-
-* `-t priv` raw private keys - this can be used to support arbitrary
-            deterministic wallet schemes via an external program. Any trailing
-            data after the hex encoded private key will be included in
-            brainflayer's output as well, for reference. See also the `-I`
-            option if you want to crack a bunch of sequential keys, which has
-            special speed optimizations.
-
-* `-t warp` salts or passwords/passphrases for WarpWallet
-
-* `-t bwio` salts or passwords/passphrases for brainwallet.io
-
-* `-t bv2`  salts or passwords/passphrases for brainv2 - this one is *very* slow
-            on CPU, however the parameter choices make it a great target for GPUs
-            and FPGAs.
-
-* `-t rush` passwords for password-protected rushwallets - pass the fragment (the
-            part of the url after the #) using `-r`. Almost all wrong passwords
-            will be rejected even without a bloom filter.
-
-Address types can be specified with the `-c` option:
-
-* `-c u` uncompressed addresses
-
-* `-c c` compressed addresses
-
-* `-c e` ethereum addresses
-
-* `-c x` most signifigant bits of public point's x coordinate
-
-It's possible to combine two or more of these, e.g. the default is `-c uc`.
-
-An incremental private key brute force mode is available for fans of
-[directory.io](http://www.directory.io/), try
-
-`brainflayer.exe -v -I 0000000000000000000000000000000000000000000000000000000000000001 -b example.blf`
-
-See the output of `brainflayer.exe -h` for more detailed usage info.
-
-Also included is `blfchk` - you can pipe it hex encoded hash160 to check a
-bloom filter file for. It's very fast - it can easily check millions of
-hash160s per second. Not entirely sure what this is good for but I'm sure
-you'll come up with something.
 
 Building
 --------
