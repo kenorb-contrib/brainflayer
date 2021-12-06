@@ -7,7 +7,8 @@ and I managed to compile brainflayer for Windows
 
 I would be glad to receive any feedback!
 
-donation: bc1qlwcaxwnp2ulndlppdc0wvkdz7ly2npfuz6ny0a
+donation: bc1qlwcaxwnp2ulndlppdc0wvkdz7ly2npfuz6ny0a  
+
 English
 -------
 This software will allow you to use brainflayer functions directly in Windows
