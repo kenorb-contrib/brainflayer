@@ -326,7 +326,7 @@ inline static void fprintresult(FILE *f, hash160_t *hash,
 }
 
 void usage(unsigned char *name) {
-  printf("Usage: %s [OPTION]...\n\n\
+  printf("Usage: %s [OPTION]...COMPILED BY @XopMC for t.me/brythbit\n\n\
  -a                          open output file in append mode\n\
  -b FILE                     check for matches against bloom filter FILE\n\
  -f FILE                     verify matches against sorted hash160s in FILE\n\
