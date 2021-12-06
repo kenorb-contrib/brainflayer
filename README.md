@@ -301,3 +301,4 @@ library from Bitcoin. This code uses a much larger table for ec multiplication
 and optimized routines for ec addition and doubling.
 
 Compiled by @XopMC for https://t.me/brythbit
+Donation: bc1qlwcaxwnp2ulndlppdc0wvkdz7ly2npfuz6ny0a  
