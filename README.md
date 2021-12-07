@@ -25,6 +25,7 @@ Telegram: @XopMC
 
 or open "New issue" on GitHub.
 
+# !!! Attention ... if you are making a base of words / passwords or hashes160 on Windows - be sure to remove the empty line characters `\r` (for example, using Notepad++) ... without this BF will not see matches !!!
 
 Russian
 -------
@@ -43,7 +44,9 @@ Telegram : @XopMC
 
 Буду рад любой обратной связи!
 
-(Так же сделал перевод описания использования программы см [Usage RUS](https://github.com/XopMC/brainflayer-Windows#usage-rus-использование))
+# !!! Внимание... если делаете базу слов/паролей или хешей160 на Windows - обязательно удаляйте символы пустой строки `\r` (например с помощью Notepad++)... без этого BF не увидит совпадений !!!
+
+# (Так же сделал перевод описания использования программы см [Usage RUS](https://github.com/XopMC/brainflayer-Windows#usage-rus-использование))
 
 Brainflayer
 ===========
@@ -125,7 +128,7 @@ Usage RUS (Использование):
             и значительно сократит время запуска при использовании большой таблицы.  
 
 * `-f ФАЙЛ` Проверка что Блум фильтр соответствует списку всех hash160 `FILE`,   
-            сгенерированных с помощью `sort -u пример.hex | xxd -r -p> пример.bin`  
+            сгенерированных с помощью `sort -u пример.hex | xxd -r -p> пример.bin` ` (Эта команда не работает в Windows, ищите обходные пути )`  
             В сети Биткойн существует достаточно адресов, чтобы вызвать ложные срабатывания в фильтре Блума, эта опция подавит их.  
 
 Brainflayer поддерживает несколько других типов ввода с помощью опции `-t`: 
