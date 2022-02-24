@@ -172,6 +172,12 @@ extensive refactoring of Brainflayer's memory optimizations and is not happening
 Redistribution of compiled `brainflayer` binaries is prohibited, and
 unauthorized binaries probably contain malware.
 
+Resources
+---------
+
+- https://bitcointalk.org/index.php?topic=267618.0
+  on how to find non-zero balance addresses
+
 Authors
 -------
 
