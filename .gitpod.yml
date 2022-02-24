@@ -1,0 +1,4 @@
+image: gitpod/workspace-mongodb
+
+tasks:
+  - init: make
