@@ -172,6 +172,21 @@ extensive refactoring of Brainflayer's memory optimizations and is not happening
 Redistribution of compiled `brainflayer` binaries is prohibited, and
 unauthorized binaries probably contain malware.
 
+Docker
+------
+
+Build docker image:
+
+    docker build -t brainflayer .
+
+Precompute the bloom filter:
+
+    docker run -it --entrypoint=/brainflayer/hex2blf -v$(pwd)/data:/data brainflayer /data/input.hex /data/result.blf
+
+Run Brainflayer against it:
+
+    docker run -it -v$(pwd)/data:/data brainflayer -v -b /data/result.blf -i /data/phraselist.txt
+
 Resources
 ---------
 
