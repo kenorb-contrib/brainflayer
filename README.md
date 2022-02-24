@@ -160,7 +160,8 @@ about a build failure in libsecp256k1 I will close it.
 Dependencies should install with
 
 ```
-apt install build-essential libgmp-dev libssl-dev
+apt install autoconf autogen git libtool make
+apt install build-essential libgmp-dev libgmp3-dev libssl-dev
 ```
 
 Supported build target is currently Ubuntu 20.04 on amd64/x86_64. Issues with
@@ -179,11 +180,3 @@ Guangyan Song contributed the code in `ec_pubkey_fast.c` which more than
 doubles the speed of public key computations compared with the stock secp256k1
 library from Bitcoin. This code uses a much larger table for ec multiplication
 and optimized routines for ec addition and doubling.
-
-Install
--------
-sudo apt install build-essential libgmp-dev libssl-dev
-
-Install libtool:
-
-sudo apt-get update -y -qqq --fix-missing && sudo apt-get install -y -qqq autoconf libtool
