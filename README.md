@@ -149,6 +149,21 @@ bloom filter file for. It's very fast - it can easily check millions of
 hash160s per second. Not entirely sure what this is good for but I'm sure
 you'll come up with something.
 
+#### BIP39
+
+Generate BIP39 for BrainFlayer or similar applications.
+
+Parameters:
+
+- -n how many pieces to be generate.
+- -l how many words will there be in a generate?
+- -s Will the words be combined?
+- -w wordlist
+
+Example command:
+
+    ./brain12words.py -n 9000000000000000000 -l 12 -w brainwalletdictionary.txt | ./brainflayer -v -o found.txt -b bloom.blf
+
 Building
 --------
 
