@@ -192,6 +192,25 @@ static int sha32priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   return 0;
 }
 
+static int rounds;
+
+static int shaxnpriv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
+  SHA256_CTX ctx;
+  int i;
+
+  SHA256_Init(&ctx);
+  SHA256_Update(&ctx, pass, pass_sz);
+  SHA256_Final(priv, &ctx);
+  
+  for (i = 1; i < rounds; ++i) {
+    SHA256_Init(&ctx);
+    SHA256_Update(&ctx, priv, 32);
+    SHA256_Final(priv, &ctx);
+  }
+  return 0;
+}
+
+
 /*
 static int dicap2hash160(unsigned char *pass, size_t pass_sz) {
   SHA3_256_CTX ctx;
@@ -350,6 +369,7 @@ void usage(unsigned char *name) {
                              rush   - rushwallet (requires -r) FAST\n\
                              keccak - keccak256 (ethercamp/old ethaddress)\n\
                              camp2  - keccak256 * 2031 (new ethercamp)\n\
+							 shaxn   - N rounds of SHA-256\n\
  -x                          treat input as hex encoded\n\
  -s SALT                     use SALT for salted input types (default: none)\n\
  -p PASSPHRASE               use PASSPHRASE for salted input types, inputs\n\
@@ -392,7 +412,7 @@ int main(int argc, char **argv) {
   unsigned char modestr[64];
 
   int spok = 0, aopt = 0, vopt = 0, wopt = 16, xopt = 0;
-  int nopt_mod = 0, nopt_rem = 0, Bopt = 0;
+  int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Nopt = 2;
   uint64_t kopt = 0;
   unsigned char *bopt = NULL, *iopt = NULL, *oopt = NULL;
   unsigned char *topt = NULL, *sopt = NULL, *popt = NULL;
@@ -411,7 +431,7 @@ int main(int argc, char **argv) {
   unsigned char batch_priv[BATCH_MAX][32];
   unsigned char batch_upub[BATCH_MAX][65];
 
-  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:B:")) != -1) {
+  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:B:N:")) != -1) {
     switch (c) {
       case 'a':
         aopt = 1; // open output file in append mode
@@ -426,6 +446,9 @@ int main(int argc, char **argv) {
         optarg = strchr(optarg, '/');
         if (optarg != NULL) { nopt_mod = atoi(optarg+1); }
         skipping = 1;
+        break;
+      case 'N':
+        Nopt = atoi(optarg);
         break;
       case 'B':
         Bopt = atoi(optarg);
@@ -609,6 +632,11 @@ int main(int argc, char **argv) {
     input2priv = &keccak2priv;
   } else if (strcmp(topt, "sha3") == 0) {
     input2priv = &sha32priv;
+//  } else if (strcmp(topt, "dicap") == 0) {
+//    input2priv = &dicap2priv;
+  } else if (strcmp(topt, "shaxn") == 0) {
+    input2priv = &shaxnpriv;
+	rounds = Nopt;
 //  } else if (strcmp(topt, "dicap") == 0) {
 //    input2priv = &dicap2priv;
   } else {
