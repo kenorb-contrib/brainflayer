@@ -2,6 +2,9 @@
 #ifndef __MMAPF_H_
 #define __MMAPF_H_
 
+#include <stdlib.h>
+
+
 typedef struct {
   void *mem;
   size_t mmap_sz;
@@ -38,7 +41,7 @@ typedef struct {
 #define MMAPF_EXLAST     1003
 
 char * mmapf_strerror(int);
-int mmapf(mmapf_ctx *, const unsigned char *, size_t, int);
+int mmapf(mmapf_ctx *, const char *, size_t, int);
 int munmapf(mmapf_ctx *);
 
 /*  vim: set ts=2 sw=2 et ai si: */
