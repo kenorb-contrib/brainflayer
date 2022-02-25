@@ -39,7 +39,7 @@ def generate(prefix=False, number=5):
             word1 = CODEWORDS[int(random.uniform(0,len(CODEWORDS)))]
         
         word2 = CODEWORDS[int(random.uniform(0,len(CODEWORDS)))]
-        print " %s %s" % (word1.rstrip(), word2.rstrip())
+        print "%s %s" % (word1.rstrip(), word2.rstrip())
         
         number -= 1
     

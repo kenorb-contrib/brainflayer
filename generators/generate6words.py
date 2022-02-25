@@ -42,7 +42,7 @@ def generate(prefix=False, number=5):
             word4 = CODEWORDS[int(random.uniform(0,len(CODEWORDS)))]
             word5 = CODEWORDS[int(random.uniform(0,len(CODEWORDS)))]
             word6 = CODEWORDS[int(random.uniform(0,len(CODEWORDS)))]
-        print >> outputtxt, " %s %s %s %s %s %s " % (word1.rstrip(), word2.rstrip(), word3.rstrip(), word4.rstrip(), word5.rstrip(), word6.rstrip())
+        print >> outputtxt, "%s %s %s %s %s %s" % (word1.rstrip(), word2.rstrip(), word3.rstrip(), word4.rstrip(), word5.rstrip(), word6.rstrip())
         
         number -= 1
     
