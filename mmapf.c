@@ -107,7 +107,7 @@ int mmapf(mmapf_ctx *ctx, const char *filename, size_t size, int flags) {
     } else { // file missing, creation *not* requested
       return ENOENT;
     }
-    
+
     //if ((ret = posix_fadvise(fd, 0, size, fadv)) != 0) { return ret; }
     posix_fadvise(fd, 0, size, fadv); // ignore result
     ctx->mem = mmap(NULL, ctx->mmap_sz, mmode, mflags, fd, 0);

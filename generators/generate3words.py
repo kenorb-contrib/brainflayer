@@ -30,26 +30,26 @@ class Usage(Exception):
         self.msg = msg
 
 def generate(prefix=False, number=5):
-    while number > 0:        
+    while number > 0:
         if prefix == 'TRUE':
             word1 = PREFIXES[int(random.uniform(0,len(PREFIXES)))]
         elif prefix:
             word1 = prefix
         else:
             word1 = CODEWORDS[int(random.uniform(0,len(CODEWORDS)))]
-        
+
         word2 = CODEWORDS[int(random.uniform(0,len(CODEWORDS)))]
 	word3 = CODEWORDS[int(random.uniform(0,len(CODEWORDS)))]
         print "%s %s %s" % (word1.rstrip(), word2.rstrip(), word3.rstrip())
-        
+
         number -= 1
-    
+
 
 def main(argv=None):
-    
+
     number = 5
     prefix = False
-    
+
     if argv is None:
         argv = sys.argv
     try:
@@ -57,7 +57,7 @@ def main(argv=None):
             opts, args = getopt.getopt(argv[1:], "hn:p:i:vw:", ["help", "number=", "prefix=", "wordlist="])
         except getopt.error, msg:
             raise Usage(msg)
-    
+
         # option processing
         for option, value in opts:
             if option == "-v":
@@ -71,16 +71,16 @@ def main(argv=None):
             	print "Importing: %s" % value
             	CODEWORDS = open(value, 'r').readlines()
             if option in ("-p", "--prefixe"):
-                
+
                 print value
-                
+
                 if (value):
                     prefix = value
                 else:
                     prefix = 'TRUE'
-    
+
         generate(prefix, number)
-    
+
     except Usage, err:
         print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
         print >> sys.stderr, "\t for help use --help"

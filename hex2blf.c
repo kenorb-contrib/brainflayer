@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "[!] malloc failed (line buffer)\n");
     exit(1);
   }
-  
+
   i = 0;
   stat(hashfile, &sb);
   fprintf(stderr, "[*] Loading hash160s from '%s' \033[s  0.0%%", hashfile);
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "[!] Failed to write bloom filter file '%s'\n", bloomfile);
     exit(1);
   }
-  
+
   fprintf(stderr, "[+] Success!\n");
   return 0;
 }

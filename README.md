@@ -206,8 +206,8 @@ Generators
 ----------
 
     ./generators/generate2words.py -w wordlist.txt -n 90000000000 \
-      | ./brainflayer -v  -o result.txt -b 35.blf 
-    ./generators/2.py -n 90000000000 | ./brainflayer -v  -o result.txt -b 35.blf 
+      | ./brainflayer -v  -o result.txt -b 35.blf
+    ./generators/2.py -n 90000000000 | ./brainflayer -v  -o result.txt -b 35.blf
 
 Resources
 ---------

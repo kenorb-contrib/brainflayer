@@ -201,7 +201,7 @@ static int shaxnpriv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   SHA256_Init(&ctx);
   SHA256_Update(&ctx, pass, pass_sz);
   SHA256_Final(priv, &ctx);
-  
+
   for (i = 1; i < rounds; ++i) {
     SHA256_Init(&ctx);
     SHA256_Update(&ctx, priv, 32);

@@ -32,7 +32,7 @@ sub base58 {
 	my $leading_zeroes = length $1 if join('', @binary_address_to_encode) =~ /^(0*)/;
 	#Cycle through each binary decimal character, encoding to Base58.
 	for my $dec_char ( @binary_address_to_encode ) {
-		#Cycle through each index (i.e. base58 encoded character) of array holding base58 encoded result. 
+		#Cycle through each index (i.e. base58 encoded character) of array holding base58 encoded result.
 	        for (my $encoded_character_index = $base58_encoded_array_size; $encoded_character_index--; ) {
 			#See Satoshi's base58.cpp code for details.
 			$dec_char += 256 * ($base58_encoded_address[$encoded_character_index] // 0);
@@ -56,13 +56,13 @@ sub base58 {
 	}
 }
 
-#Decodes bitcoin address from its Base58 encoding into an array of binary decimals. 
+#Decodes bitcoin address from its Base58 encoding into an array of binary decimals.
 sub unbase58 {
 	my $bitcoin_address = $_[0];
 	die "Subroutine unbase58 needs base58 encoded bitcoin address to decode!\n" unless defined $bitcoin_address;
 	die "Cannot Decode! Invalid Base58 Character(s)!\n" unless $bitcoin_address =~ /^[1-9A-HJ-NP-Za-km-z]*$/;
 	#This is overkill, but it allows for plenty of room to store decoded bytes.
-	my $decoded_array_size = length($bitcoin_address); 
+	my $decoded_array_size = length($bitcoin_address);
 	my @decoded_binary_address; #Array that will hold bytes of Base58 decoded address.
 	#Counts number of leading 1's in bitcoin address.
 	my $leading_ones = length($1) if $bitcoin_address =~ /^(1*)/;
@@ -148,14 +148,14 @@ sub encodebase58fromhex {
 
 my $fileSrc = 'base58.txt';
 open my $fhSrc, $fileSrc or die "Could not open $fileSrc: $!";
- 
+
 my $fileDest = 'hex.txt';
 open(my $fhDest, '>>', $fileDest) or die "Could not open file $fileDest: $!";
- 
-while( my $base58_encoded_address = <$fhSrc>)  {   
+
+while( my $base58_encoded_address = <$fhSrc>)  {
   my $binary_address = decodebase58tohex($base58_encoded_address);
   say $fhDest $binary_address;
 }
- 
+
 close $fhSrc;
 close $fhDest;
