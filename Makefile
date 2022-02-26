@@ -10,7 +10,7 @@ CFLAGS = -O3 \
          -Wall -Wextra -Wno-pointer-sign -Wno-sign-compare \
          -pedantic -std=gnu99
 COMPILE = gcc $(CFLAGS)
-
+COMPILE_MPI = mpicc $(CFLAGS)
 all: $(BINARIES)
 
 .git:
@@ -45,6 +45,9 @@ algo/brainv2.o: algo/brainv2.c scrypt-jane/scrypt-jane.h
 ec_pubkey_fast.o: ec_pubkey_fast.c secp256k1/include/secp256k1.h
 	$(COMPILE) -Wno-unused-function -c $< -o $@
 
+brainflayer.o: brainflayer.c
+	$(COMPILE_MPI) -c $< -o $@
+
 %.o: %.c
 	$(COMPILE) -c $< -o $@
 
@@ -65,7 +68,7 @@ filehex: filehex.o hex.o
 
 brainflayer: brainflayer.o $(OBJ_UTIL) $(OBJ_ALGO) \
              secp256k1/.libs/libsecp256k1.a scrypt-jane/scrypt-jane.o
-	$(COMPILE) $^ $(LIBS) -o $@
+	$(COMPILE_MPI) $^ $(LIBS) -o $@
 
 clean:
 	rm -f $(BINARIES) $(OBJECTS)

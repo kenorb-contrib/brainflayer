@@ -1,36 +1,39 @@
 /* Copyright (c) 2015 Ryan Castellucci, All Rights Reserved */
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <assert.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-#include <signal.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <errno.h>
 
 #include <openssl/sha.h>
 
-#include <sys/time.h>
-#include <sys/wait.h>
-#include <sys/types.h>
 #include <sys/sysinfo.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "ripemd160_256.h"
 
 #include "ec_pubkey_fast.h"
 
-#include "hex.h"
 #include "bloom.h"
-#include "mmapf.h"
 #include "hash160.h"
+#include "hex.h"
 #include "hsearchf.h"
+#include "mmapf.h"
 
 #include "algo/brainv2.h"
-#include "algo/warpwallet.h"
 #include "algo/brainwalletio.h"
 #include "algo/sha3.h"
+#include "algo/warpwallet.h"
+
+// Magic
+#include <mpi.h>
 
 // raise this if you really want, but quickly diminishing returns
 #define BATCH_MAX 4096
@@ -38,8 +41,8 @@
 static int brainflayer_is_init = 0;
 
 typedef struct pubhashfn_s {
-   void (*fn)(hash160_t *, const unsigned char *);
-   char id;
+  void (*fn)(hash160_t *, const unsigned char *);
+  char id;
 } pubhashfn_t;
 
 static unsigned char *mem;
@@ -50,26 +53,29 @@ static unsigned char *bloom = NULL;
 static unsigned char *unhexed = NULL;
 static size_t unhexed_sz = 4096;
 
-#define bail(code, ...) \
-do { \
-  fprintf(stderr, __VA_ARGS__); \
-  exit(code); \
-} while (0)
+#define bail(code, ...)                                                        \
+  do {                                                                         \
+    fprintf(stderr, __VA_ARGS__);                                              \
+    exit(code);                                                                \
+  } while (0)
 
 #define chkmalloc(S) _chkmalloc(S, __FILE__, __LINE__)
-static void * _chkmalloc(size_t size, unsigned char *file, unsigned int line) {
+static void *_chkmalloc(size_t size, unsigned char *file, unsigned int line) {
   void *ptr = malloc(size);
   if (ptr == NULL) {
-    bail(1, "malloc(%zu) failed at %s:%u: %s\n", size, file, line, strerror(errno));
+    bail(1, "malloc(%zu) failed at %s:%u: %s\n", size, file, line,
+         strerror(errno));
   }
   return ptr;
 }
 
 #define chkrealloc(P, S) _chkrealloc(P, S, __FILE__, __LINE__);
-static void * _chkrealloc(void *ptr, size_t size, unsigned char *file, unsigned int line) {
+static void *_chkrealloc(void *ptr, size_t size, unsigned char *file,
+                         unsigned int line) {
   void *ptr2 = realloc(ptr, size);
   if (ptr2 == NULL) {
-    bail(1, "realloc(%p, %zu) failed at %s:%u: %s\n", ptr, size, file, line, strerror(errno));
+    bail(1, "realloc(%p, %zu) failed at %s:%u: %s\n", ptr, size, file, line,
+         strerror(errno));
   }
   return ptr2;
 }
@@ -78,7 +84,7 @@ uint64_t getns() {
   uint64_t ns;
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  ns  = ts.tv_nsec;
+  ns = ts.tv_nsec;
   ns += ts.tv_sec * 1000000000ULL;
   return ns;
 }
@@ -132,17 +138,15 @@ static void ehash160(hash160_t *h, const unsigned char *upub) {
   /* compute hash160 for uncompressed public key */
   /* keccak_256_last160(pub) */
   KECCAK_256_Init(&ctx);
-  KECCAK_256_Update(&ctx, upub+1, 64);
+  KECCAK_256_Update(&ctx, upub + 1, 64);
   KECCAK_256_Final(hash, &ctx);
-  memcpy(h->uc, hash+12, 20);
+  memcpy(h->uc, hash + 12, 20);
 }
 
 /* msb of x coordinate of public key */
 static void xhash160(hash160_t *h, const unsigned char *upub) {
-  memcpy(h->uc, upub+1, 20);
+  memcpy(h->uc, upub + 1, 20);
 }
-
-
 
 static int pass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   SHA256_CTX ctx;
@@ -154,7 +158,8 @@ static int pass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   return 0;
 }
 
-static int keccak2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
+static int keccak2priv(unsigned char *priv, unsigned char *pass,
+                       size_t pass_sz) {
   SHA3_256_CTX ctx;
 
   KECCAK_256_Init(&ctx);
@@ -210,7 +215,6 @@ static int shaxnpriv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   return 0;
 }
 
-
 /*
 static int dicap2hash160(unsigned char *pass, size_t pass_sz) {
   SHA3_256_CTX ctx;
@@ -237,7 +241,8 @@ static int dicap2hash160(unsigned char *pass, size_t pass_sz) {
 }
 */
 
-static int rawpriv2priv(unsigned char *priv, unsigned char *rawpriv, size_t rawpriv_sz) {
+static int rawpriv2priv(unsigned char *priv, unsigned char *rawpriv,
+                        size_t rawpriv_sz) {
   memcpy(priv, rawpriv, rawpriv_sz);
   return 0;
 }
@@ -245,58 +250,70 @@ static int rawpriv2priv(unsigned char *priv, unsigned char *rawpriv, size_t rawp
 static unsigned char *kdfsalt;
 static size_t kdfsalt_sz;
 
-static int warppass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
+static int warppass2priv(unsigned char *priv, unsigned char *pass,
+                         size_t pass_sz) {
   int ret;
-  if ((ret = warpwallet(pass, pass_sz, kdfsalt, kdfsalt_sz, priv)) != 0) return ret;
+  if ((ret = warpwallet(pass, pass_sz, kdfsalt, kdfsalt_sz, priv)) != 0)
+    return ret;
   pass[pass_sz] = 0;
   return 0;
 }
 
-static int bwiopass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
+static int bwiopass2priv(unsigned char *priv, unsigned char *pass,
+                         size_t pass_sz) {
   int ret;
-  if ((ret = brainwalletio(pass, pass_sz, kdfsalt, kdfsalt_sz, priv)) != 0) return ret;
+  if ((ret = brainwalletio(pass, pass_sz, kdfsalt, kdfsalt_sz, priv)) != 0)
+    return ret;
   pass[pass_sz] = 0;
   return 0;
 }
 
-static int brainv2pass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
+static int brainv2pass2priv(unsigned char *priv, unsigned char *pass,
+                            size_t pass_sz) {
   unsigned char hexout[33];
   int ret;
-  if ((ret = brainv2(pass, pass_sz, kdfsalt, kdfsalt_sz, hexout)) != 0) return ret;
+  if ((ret = brainv2(pass, pass_sz, kdfsalt, kdfsalt_sz, hexout)) != 0)
+    return ret;
   pass[pass_sz] = 0;
-  return pass2priv(priv, hexout, sizeof(hexout)-1);
+  return pass2priv(priv, hexout, sizeof(hexout) - 1);
 }
 
 static unsigned char *kdfpass;
 static size_t kdfpass_sz;
 
-static int warpsalt2priv(unsigned char *priv, unsigned char *salt, size_t salt_sz) {
+static int warpsalt2priv(unsigned char *priv, unsigned char *salt,
+                         size_t salt_sz) {
   int ret;
-  if ((ret = warpwallet(kdfpass, kdfpass_sz, salt, salt_sz, priv)) != 0) return ret;
+  if ((ret = warpwallet(kdfpass, kdfpass_sz, salt, salt_sz, priv)) != 0)
+    return ret;
   salt[salt_sz] = 0;
   return 0;
 }
 
-static int bwiosalt2priv(unsigned char *priv, unsigned char *salt, size_t salt_sz) {
+static int bwiosalt2priv(unsigned char *priv, unsigned char *salt,
+                         size_t salt_sz) {
   int ret;
-  if ((ret = brainwalletio(kdfpass, kdfpass_sz, salt, salt_sz, priv)) != 0) return ret;
+  if ((ret = brainwalletio(kdfpass, kdfpass_sz, salt, salt_sz, priv)) != 0)
+    return ret;
   salt[salt_sz] = 0;
   return 0;
 }
 
-static int brainv2salt2priv(unsigned char *priv, unsigned char *salt, size_t salt_sz) {
+static int brainv2salt2priv(unsigned char *priv, unsigned char *salt,
+                            size_t salt_sz) {
   unsigned char hexout[33];
   int ret;
-  if ((ret = brainv2(kdfpass, kdfpass_sz, salt, salt_sz, hexout)) != 0) return ret;
+  if ((ret = brainv2(kdfpass, kdfpass_sz, salt, salt_sz, hexout)) != 0)
+    return ret;
   salt[salt_sz] = 0;
-  return pass2priv(priv, hexout, sizeof(hexout)-1);
+  return pass2priv(priv, hexout, sizeof(hexout) - 1);
 }
 
 static unsigned char rushchk[5];
 static int rush2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   SHA256_CTX ctx;
   unsigned char hash[SHA256_DIGEST_LENGTH];
-  unsigned char userpasshash[SHA256_DIGEST_LENGTH*2+1];
+  unsigned char userpasshash[SHA256_DIGEST_LENGTH * 2 + 1];
 
   SHA256_Init(&ctx);
   SHA256_Update(&ctx, pass, pass_sz);
@@ -311,7 +328,9 @@ static int rush2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   SHA256_Final(priv, &ctx);
 
   // early exit if the checksum doesn't match
-  if (memcmp(priv, rushchk, sizeof(rushchk)) != 0) { return -1; }
+  if (memcmp(priv, rushchk, sizeof(rushchk)) != 0) {
+    return -1;
+  }
 
   return 0;
 }
@@ -330,18 +349,13 @@ inline static void priv2pub(unsigned char *upub, const unsigned char *priv) {
   secp256k1_ec_pubkey_create_precomp(upub, &sz, priv);
 }
 
-
 inline static void fprintresult(FILE *f, hash160_t *hash,
-                                unsigned char compressed,
-                                unsigned char *type,
+                                unsigned char compressed, unsigned char *type,
                                 unsigned char *input) {
   unsigned char hexed0[41];
 
-  fprintf(f, "%s:%c:%s:%s\n",
-          hex(hash->uc, 20, hexed0, sizeof(hexed0)),
-          compressed,
-          type,
-          input);
+  fprintf(f, "%s:%c:%s:%s\n", hex(hash->uc, 20, hexed0, sizeof(hexed0)),
+          compressed, type, input);
 }
 
 void usage(unsigned char *name) {
@@ -387,13 +401,100 @@ void usage(unsigned char *name) {
  -m FILE                     load ecmult table from FILE\n\
                              the ecmtabgen tool can build such a table\n\
  -v                          verbose - display cracking progress\n\
- -h                          show this help\n", name, BATCH_MAX);
-//q, --quiet                 suppress non-error messages
+ -h                          show this help\n",
+         name, BATCH_MAX);
+  // q, --quiet                 suppress non-error messages
   exit(1);
 }
 
+void readlines(MPI_File *in, const int rank, const int size, const int overlap,
+               char ***lines, int *nlines) {
+
+  /* @see: http://stackoverflow.com/a/13328819/2521647 */
+  MPI_Offset filesize;
+  MPI_Offset localsize;
+  MPI_Offset start;
+  MPI_Offset end;
+  char *chunk;
+
+  /* figure out who reads what */
+
+  MPI_File_get_size(*in, &filesize);
+  localsize = filesize / size;
+  start = rank * localsize;
+  end = start + localsize - 1;
+
+  /* add overlap to the end of everyone's chunk... */
+  end += overlap;
+
+  /* except the last processor, of course */
+  if (rank == size - 1)
+    end = filesize;
+
+  localsize = end - start + 1;
+
+  /* allocate memory */
+  chunk = malloc((localsize + 1) * sizeof(char));
+
+  /* everyone reads in their part */
+  MPI_File_read_at_all(*in, start, chunk, localsize, MPI_CHAR,
+                       MPI_STATUS_IGNORE);
+  chunk[localsize] = '\0';
+
+  /*
+   * everyone calculate what their start and end *really* are by going
+   * from the first newline after start to the first newline after the
+   * overlap region starts (eg, after end - overlap + 1)
+   */
+
+  int locstart = 0, locend = localsize;
+  if (rank != 0) {
+    while (chunk[locstart] != '\n')
+      locstart++;
+    locstart++;
+  }
+  if (rank != size - 1) {
+    locend -= overlap;
+    while (chunk[locend] != '\n')
+      locend++;
+  }
+  localsize = locend - locstart + 1;
+
+  /* Now let's copy our actual data over into a new array, with no overlaps */
+  char *data = (char *)malloc((localsize + 1) * sizeof(char));
+  memcpy(data, &(chunk[locstart]), localsize);
+  data[localsize] = '\0';
+  free(chunk);
+
+  /* Now we'll count the number of lines */
+  *nlines = 0;
+  for (int i = 0; i < localsize; i++)
+    if (data[i] == '\n')
+      (*nlines)++;
+
+  /* Now the array lines will point into the data array at the start of each
+   * line */
+  /* assuming nlines > 1 */
+  *lines = (char **)malloc((*nlines) * sizeof(char *));
+  (*lines)[0] = strtok(data, "\n");
+  for (int i = 1; i < (*nlines); i++)
+    (*lines)[i] = strtok(NULL, "\n");
+
+  return;
+}
+
+
 int main(int argc, char **argv) {
-  FILE *ifile = stdin;
+  int rank;
+  int size;
+
+  MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  printf("Moin. I'm process %d of %d processes.\n", rank, size);
+  // FILE *ifile = stdin;
+  // MPI_File ifile = stdin;
+  MPI_File ifile;
   FILE *ofile = stdout;
   FILE *ffile = NULL;
 
@@ -431,83 +532,87 @@ int main(int argc, char **argv) {
   unsigned char batch_priv[BATCH_MAX][32];
   unsigned char batch_upub[BATCH_MAX][65];
 
-  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:B:N:")) != -1) {
+  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:B:N:")) !=
+         -1) {
     switch (c) {
-      case 'a':
-        aopt = 1; // open output file in append mode
-        break;
-      case 'k':
-        kopt = strtoull(optarg, NULL, 10); // skip first k lines of input
-        skipping = 1;
-        break;
-      case 'n':
-        // only try the rem'th of every mod lines (one indexed)
-        nopt_rem = atoi(optarg) - 1;
-        optarg = strchr(optarg, '/');
-        if (optarg != NULL) { nopt_mod = atoi(optarg+1); }
-        skipping = 1;
-        break;
-      case 'N':
-        Nopt = atoi(optarg);
-        break;
-      case 'B':
-        Bopt = atoi(optarg);
-        break;
-      case 'w':
-        if (wopt > 1) wopt = atoi(optarg);
-        break;
-      case 'm':
-        mopt = optarg; // table file
-        wopt = 1; // auto
-        break;
-      case 'v':
-        vopt = 1; // verbose
-        break;
-      case 'b':
-        bopt = optarg; // bloom filter file
-        break;
-      case 'f':
-        fopt = optarg; // full filter file
-        break;
-      case 'i':
-        iopt = optarg; // input file
-        break;
-      case 'o':
-        oopt = optarg; // output file
-        break;
-      case 'x':
-        xopt = 1; // input is hex encoded
-        break;
-      case 's':
-        sopt = optarg; // salt
-        break;
-      case 'p':
-        popt = optarg; // passphrase
-        break;
-      case 'r':
-        ropt = optarg; // rushwallet
-        break;
-      case 'c':
-        copt = optarg; // type of hash160
-        break;
-      case 't':
-        topt = optarg; // type of input
-        break;
-      case 'I':
-        Iopt = optarg; // start key for incremental
-        xopt = 1; // input is hex encoded
-        break;
-      case 'h':
-        // show help
-        usage(argv[0]);
-        return 0;
-      case '?':
-        // show error
-        return 1;
-      default:
-        // should never be reached...
-        printf("got option '%c' (%d)\n", c, c);
-        return 1;
+    case 'a':
+      aopt = 1; // open output file in append mode
+      break;
+    case 'k':
+      kopt = strtoull(optarg, NULL, 10); // skip first k lines of input
+      skipping = 1;
+      break;
+    case 'n':
+      // only try the rem'th of every mod lines (one indexed)
+      nopt_rem = atoi(optarg) - 1;
+      optarg = strchr(optarg, '/');
+      if (optarg != NULL) {
+        nopt_mod = atoi(optarg + 1);
+      }
+      skipping = 1;
+      break;
+    case 'N':
+      Nopt = atoi(optarg);
+      break;
+    case 'B':
+      Bopt = atoi(optarg);
+      break;
+    case 'w':
+      if (wopt > 1)
+        wopt = atoi(optarg);
+      break;
+    case 'm':
+      mopt = optarg; // table file
+      wopt = 1;      // auto
+      break;
+    case 'v':
+      vopt = 1; // verbose
+      break;
+    case 'b':
+      bopt = optarg; // bloom filter file
+      break;
+    case 'f':
+      fopt = optarg; // full filter file
+      break;
+    case 'i':
+      iopt = optarg; // input file
+      break;
+    case 'o':
+      oopt = optarg; // output file
+      break;
+    case 'x':
+      xopt = 1; // input is hex encoded
+      break;
+    case 's':
+      sopt = optarg; // salt
+      break;
+    case 'p':
+      popt = optarg; // passphrase
+      break;
+    case 'r':
+      ropt = optarg; // rushwallet
+      break;
+    case 'c':
+      copt = optarg; // type of hash160
+      break;
+    case 't':
+      topt = optarg; // type of input
+      break;
+    case 'I':
+      Iopt = optarg; // start key for incremental
+      xopt = 1;      // input is hex encoded
+      break;
+    case 'h':
+      // show help
+      usage(argv[0]);
+      return 0;
+    case '?':
+      // show error
+      return 1;
+    default:
+      // should never be reached...
+      printf("got option '%c' (%d)\n", c, c);
+      return 1;
     }
   }
 
@@ -528,9 +633,11 @@ int main(int argc, char **argv) {
   if (nopt_rem != 0 || nopt_mod != 0) {
     // note that nopt_rem has had one subtracted at option parsing
     if (nopt_rem >= nopt_mod) {
-      bail(1, "Invalid '-n' argument, remainder '%d' must be <= modulus '%d'\n", nopt_rem+1, nopt_mod);
+      bail(1, "Invalid '-n' argument, remainder '%d' must be <= modulus '%d'\n",
+           nopt_rem + 1, nopt_mod);
     } else if (nopt_rem < 0) {
-      bail(1, "Invalid '-n' argument, remainder '%d' must be > 0\n", nopt_rem+1);
+      bail(1, "Invalid '-n' argument, remainder '%d' must be > 0\n",
+           nopt_rem + 1);
     } else if (nopt_mod < 1) {
       bail(1, "Invalid '-n' argument, modulus '%d' must be > 0\n", nopt_mod);
     }
@@ -543,22 +650,29 @@ int main(int argc, char **argv) {
     struct sysinfo info;
     sysinfo(&info);
     uint64_t sysram = info.mem_unit * info.totalram;
-    if (3584LLU*(1<<wopt) > sysram) {
+    if (3584LLU * (1 << wopt) > sysram) {
       bail(1, "Not enough ram for requested window size '%d'\n", wopt);
     }
   }
 
   if (Bopt) { // if unset, will be set later
     if (Bopt < 1 || Bopt > BATCH_MAX) {
-      bail(1, "Invalid '-B' argument, batch size '%d' - must be >= 1 and <= %d\n", Bopt, BATCH_MAX);
-    } else if (Bopt & (Bopt - 1)) { // https://graphics.stanford.edu/~seander/bithacks.html#DetermineIfPowerOf2
-      bail(1, "Invalid '-B' argument, batch size '%d' is not a power of 2\n", Bopt);
+      bail(1,
+           "Invalid '-B' argument, batch size '%d' - must be >= 1 and <= %d\n",
+           Bopt, BATCH_MAX);
+    } else if (
+        Bopt &
+        (Bopt -
+         1)) { // https://graphics.stanford.edu/~seander/bithacks.html#DetermineIfPowerOf2
+      bail(1, "Invalid '-B' argument, batch size '%d' is not a power of 2\n",
+           Bopt);
     }
   }
 
   if (Iopt) {
     if (strlen(Iopt) != 64) {
-      bail(1, "The starting key passed to the '-I' must be 64 hex digits exactly\n");
+      bail(1, "The starting key passed to the '-I' must be 64 hex digits "
+              "exactly\n");
     }
     if (topt) {
       bail(1, "Cannot specify input type in incremental mode\n");
@@ -569,31 +683,34 @@ int main(int argc, char **argv) {
     for (i = 0; i < BATCH_MAX; ++i) {
       batch_line[i] = Iopt;
     }
-    unhex(Iopt, sizeof(priv)*2, priv, sizeof(priv));
+    unhex(Iopt, sizeof(priv) * 2, priv, sizeof(priv));
     skipping = 1;
-    if (!nopt_mod) { nopt_mod = 1; };
+    if (!nopt_mod) {
+      nopt_mod = 1;
+    };
   }
 
-
   /* handle copt */
-  if (copt == NULL) { copt = "uc"; }
+  if (copt == NULL) {
+    copt = "uc";
+  }
   i = 0;
   while (copt[i]) {
     switch (copt[i]) {
-      case 'u':
-        pubhashfn[i].fn = &uhash160;
-        break;
-      case 'c':
-        pubhashfn[i].fn = &chash160;
-        break;
-      case 'e':
-        pubhashfn[i].fn = &ehash160;
-        break;
-      case 'x':
-        pubhashfn[i].fn = &xhash160;
-        break;
-      default:
-        bail(1, "Unknown hash160 type '%c'.\n", copt[i]);
+    case 'u':
+      pubhashfn[i].fn = &uhash160;
+      break;
+    case 'c':
+      pubhashfn[i].fn = &chash160;
+      break;
+    case 'e':
+      pubhashfn[i].fn = &ehash160;
+      break;
+    case 'x':
+      pubhashfn[i].fn = &xhash160;
+      break;
+    default:
+      bail(1, "Unknown hash160 type '%c'.\n", copt[i]);
     }
     if (strchr(copt + i + 1, copt[i])) {
       bail(1, "Duplicate hash160 type '%c'.\n", copt[i]);
@@ -603,7 +720,9 @@ int main(int argc, char **argv) {
   }
 
   /* handle topt */
-  if (topt == NULL) { topt = "sha256"; }
+  if (topt == NULL) {
+    topt = "sha256";
+  }
 
   if (strcmp(topt, "sha256") == 0) {
     input2priv = &pass2priv;
@@ -613,15 +732,21 @@ int main(int argc, char **argv) {
     }
     input2priv = &rawpriv2priv;
   } else if (strcmp(topt, "warp") == 0) {
-    if (!Bopt) { Bopt = 1; } // don't batch transform for slow input hashes by default
+    if (!Bopt) {
+      Bopt = 1;
+    } // don't batch transform for slow input hashes by default
     spok = 1;
     input2priv = popt ? &warpsalt2priv : &warppass2priv;
   } else if (strcmp(topt, "bwio") == 0) {
-    if (!Bopt) { Bopt = 1; } // don't batch transform for slow input hashes by default
+    if (!Bopt) {
+      Bopt = 1;
+    } // don't batch transform for slow input hashes by default
     spok = 1;
     input2priv = popt ? &bwiosalt2priv : &bwiopass2priv;
   } else if (strcmp(topt, "bv2") == 0) {
-    if (!Bopt) { Bopt = 1; } // don't batch transform for slow input hashes by default
+    if (!Bopt) {
+      Bopt = 1;
+    } // don't batch transform for slow input hashes by default
     spok = 1;
     input2priv = popt ? &brainv2salt2priv : &brainv2pass2priv;
   } else if (strcmp(topt, "rush") == 0) {
@@ -632,13 +757,13 @@ int main(int argc, char **argv) {
     input2priv = &keccak2priv;
   } else if (strcmp(topt, "sha3") == 0) {
     input2priv = &sha32priv;
-//  } else if (strcmp(topt, "dicap") == 0) {
-//    input2priv = &dicap2priv;
+    //  } else if (strcmp(topt, "dicap") == 0) {
+    //    input2priv = &dicap2priv;
   } else if (strcmp(topt, "shaxn") == 0) {
     input2priv = &shaxnpriv;
-	rounds = Nopt;
-//  } else if (strcmp(topt, "dicap") == 0) {
-//    input2priv = &dicap2priv;
+    rounds = Nopt;
+    //  } else if (strcmp(topt, "dicap") == 0) {
+    //    input2priv = &dicap2priv;
   } else {
     bail(1, "Unknown input type '%s'.\n", topt);
   }
@@ -661,22 +786,25 @@ int main(int argc, char **argv) {
     }
   } else {
     if (popt) {
-      bail(1, "Specifying a passphrase not supported with input type '%s'\n", topt);
+      bail(1, "Specifying a passphrase not supported with input type '%s'\n",
+           topt);
     } else if (sopt) {
-      bail(1, "Specifying a salt not supported with this input type '%s'\n", topt);
+      bail(1, "Specifying a salt not supported with this input type '%s'\n",
+           topt);
     }
   }
 
   if (ropt) {
     if (input2priv != &rush2priv) {
-      bail(1, "Specifying a url fragment only supported with input type 'rush'\n");
+      bail(1,
+           "Specifying a url fragment only supported with input type 'rush'\n");
     }
     kdfsalt = ropt;
-    kdfsalt_sz = strlen(kdfsalt) - sizeof(rushchk)*2;
-    if (kdfsalt[kdfsalt_sz-1] != '!') {
+    kdfsalt_sz = strlen(kdfsalt) - sizeof(rushchk) * 2;
+    if (kdfsalt[kdfsalt_sz - 1] != '!') {
       bail(1, "Invalid rushwallet url fragment '%s'\n", kdfsalt);
     }
-    unhex(kdfsalt+kdfsalt_sz, sizeof(rushchk)*2, rushchk, sizeof(rushchk));
+    unhex(kdfsalt + kdfsalt_sz, sizeof(rushchk) * 2, rushchk, sizeof(rushchk));
     kdfsalt[kdfsalt_sz] = '\0';
   } else if (input2priv == &rush2priv) {
     bail(1, "The '-r' option is required for rushwallet.\n");
@@ -685,8 +813,10 @@ int main(int argc, char **argv) {
   snprintf(modestr, sizeof(modestr), xopt ? "(hex)%s" : "%s", topt);
 
   if (bopt) {
-    if ((ret = mmapf(&bloom_mmapf, bopt, BLOOM_SIZE, MMAPF_RNDRD)) != MMAPF_OKAY) {
-      bail(1, "failed to open bloom filter '%s': %s\n", bopt, mmapf_strerror(ret));
+    if ((ret = mmapf(&bloom_mmapf, bopt, BLOOM_SIZE, MMAPF_RNDRD)) !=
+        MMAPF_OKAY) {
+      bail(1, "failed to open bloom filter '%s': %s\n", bopt,
+           mmapf_strerror(ret));
     } else if (bloom_mmapf.mem == NULL) {
       bail(1, "got NULL pointer trying to set up bloom filter\n");
     }
@@ -715,11 +845,13 @@ int main(int argc, char **argv) {
   }
 
   /* line buffer output */
-  setvbuf(ofile,  NULL, _IOLBF, 0);
+  setvbuf(ofile, NULL, _IOLBF, 0);
   /* line buffer stderr */
   setvbuf(stderr, NULL, _IOLBF, 0);
 
-  if (vopt && ofile == stdout && isatty(fileno(stdout))) { tty = 1; }
+  if (vopt && ofile == stdout && isatty(fileno(stdout))) {
+    tty = 1;
+  }
 
   brainflayer_init_globals();
 
@@ -738,30 +870,50 @@ int main(int argc, char **argv) {
     ilines_rate_avg = -1;
     alpha = 0.500;
   } else {
-    time_start = time_last = 0; // prevent compiler warning about uninitialized use
+    time_start = time_last =
+        0; // prevent compiler warning about uninitialized use
   }
 
   // set default batch size
-  if (!Bopt) { Bopt = BATCH_MAX; }
+  if (!Bopt) {
+    Bopt = BATCH_MAX;
+  }
 
+  const int overlap = 100;
+  char **lines;
+  int nlines;
+  readlines(&ifile, rank, size, overlap, &lines, &nlines);
+  fprintf(ofile, "----Welcome %d! %d Lines for you.----\n", rank, nlines);
+  int index = 0;
+  time_t start, end;
+  double length;
+  time(&start);
   for (;;) {
     if (Iopt) {
       if (skipping) {
         priv_add_uint32(priv, nopt_rem + kopt);
         skipping = 0;
       }
-      secp256k1_ec_pubkey_batch_incr(Bopt, nopt_mod, batch_upub, batch_priv, priv);
-      memcpy(priv, batch_priv[Bopt-1], 32);
+      secp256k1_ec_pubkey_batch_incr(Bopt, nopt_mod, batch_upub, batch_priv,
+                                     priv);
+      memcpy(priv, batch_priv[Bopt - 1], 32);
       priv_add_uint32(priv, nopt_mod);
 
       batch_stopped = Bopt;
     } else {
       for (i = 0; i < Bopt; ++i) {
-        if ((batch_line_read[i] = getline(&batch_line[i], &batch_line_sz[i], ifile)-1) > -1) {
+        if ((batch_line_read[i] =
+                 getline(&batch_line[i], &batch_line_sz[i], ifile) - 1) > -1) {
           if (skipping) {
             ++raw_lines;
-            if (kopt && raw_lines < kopt) { --i; continue; }
-            if (nopt_mod && raw_lines % nopt_mod != nopt_rem) { --i; continue; }
+            if (kopt && raw_lines < kopt) {
+              --i;
+              continue;
+            }
+            if (nopt_mod && raw_lines % nopt_mod != nopt_rem) {
+              --i;
+              continue;
+            }
           }
         } else {
           break;
@@ -774,11 +926,12 @@ int main(int argc, char **argv) {
           }
           // rewrite the input line from hex
           unhex(batch_line[i], batch_line_read[i], unhexed, unhexed_sz);
-          if (input2priv(batch_priv[i], unhexed, batch_line_read[i]/2) != 0) {
+          if (input2priv(batch_priv[i], unhexed, batch_line_read[i] / 2) != 0) {
             fprintf(stderr, "input2priv failed! continuing...\n");
           }
         } else {
-          if (input2priv(batch_priv[i], batch_line[i], batch_line_read[i]) != 0) {
+          if (input2priv(batch_priv[i], batch_line[i], batch_line_read[i]) !=
+              0) {
             fprintf(stderr, "input2priv failed! continuing...\n");
           }
         }
@@ -799,34 +952,97 @@ int main(int argc, char **argv) {
           pubhashfn[j].fn(&hash160, batch_upub[i]);
 
           unsigned int bit;
-          bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+          bit = BH00(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH01(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH02(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH03(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH04(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH05(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH06(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH07(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH08(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH09(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH10(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH11(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH12(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH13(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH14(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH15(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH16(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH17(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH18(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
+          bit = BH19(hash160.ul);
+          if (BLOOM_GET_BIT(bit) == 0) {
+            continue;
+          }
 
           if (!fopt || hsearchf(ffile, &hash160)) {
-            if (tty) { fprintf(ofile, "\033[0K"); }
+            if (tty) {
+              fprintf(ofile, "\033[0K");
+            }
             // reformat/populate the line if required
             if (Iopt) {
               hex(batch_priv[i], 32, batch_line[i], 65);
             }
-            fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
+            fprintresult(ofile, &hash160, pubhashfn[j].id, modestr,
+                         batch_line[i]);
             ++olines;
           }
         }
@@ -838,7 +1054,8 @@ int main(int argc, char **argv) {
         j = 0;
         while (pubhashfn[j].fn != NULL) {
           pubhashfn[j].fn(&hash160, batch_upub[i]);
-          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
+          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr,
+                       batch_line[i]);
           ++j;
         }
       }
@@ -862,7 +1079,7 @@ int main(int argc, char **argv) {
           ilines_rate_avg = (ilines_curr * 1.0e9) / (time_elapsed * 1.0);
         } else if (ilines_rate_avg < 0) {
           ilines_rate_avg = ilines_rate;
-        /* target reporting frequency to about once every five seconds */
+          /* target reporting frequency to about once every five seconds */
         } else if (time_delta < 2500000000) {
           report_mask = (report_mask << 1) | 1;
           ilines_rate_avg = ilines_rate; /* reset EMA */
@@ -875,16 +1092,12 @@ int main(int argc, char **argv) {
         }
 
         fprintf(stderr,
-            "\033[0G\033[2K"
-            " rate: %9.2f p/s"
-            " found: %5zu/%-10zu"
-            " elapsed: %8.3f s"
-            "\033[0G",
-            ilines_rate_avg,
-            olines,
-            ilines_curr,
-            time_elapsed / 1.0e9
-        );
+                "\033[0G\033[2K"
+                " rate: %9.2f p/s"
+                " found: %5zu/%-10zu"
+                " elapsed: %8.3f s"
+                "\033[0G",
+                ilines_rate_avg, olines, ilines_curr, time_elapsed / 1.0e9);
 
         fflush(stderr);
       }
@@ -893,11 +1106,19 @@ int main(int argc, char **argv) {
 
     // main loop exit condition
     if (batch_stopped < Bopt) {
-      if (vopt) { fprintf(stderr, "\n"); }
+      if (vopt) {
+        fprintf(stderr, "\n");
+      }
       break;
     }
   }
-
+  time(&end);
+  length = difftime(end, start);
+  double perSecond = index / length;
+  fprintf(ofile, "----Process: %d, Lines: %d, speed: %.0f/sec!----\n", rank,
+          index, perSecond);
+  MPI_File_close(&ifile);
+  MPI_Finalize();
   return 0;
 }
 

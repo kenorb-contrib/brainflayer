@@ -37,6 +37,7 @@ collaborate with academic groups.
 
 Disclaimer
 ----------
+
 Just because you *can* steal someone's money doesn't mean you *should*.
 Stealing would make you a jerk. Don't be a jerk.
 
@@ -55,22 +56,22 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
-Usage
------
+Usage (non-parallel)
+--------------------
 
 ### Basic
 
 Precompute the bloom filter:
 
-`hex2blf example.hex example.blf`
+    hex2blf example.hex example.blf
 
 Run Brainflayer against it:
 
-`brainflayer -v -b example.blf -i phraselist.txt`
+    brainflayer -v -b example.blf -i phraselist.txt
 
 or
 
-`your_generator | brainflayer -v -b example.blf`
+    your_generator | brainflayer -v -b example.blf
 
 ### Advanced
 
@@ -140,7 +141,7 @@ It's possible to combine two or more of these, e.g. the default is `-c uc`.
 An incremental private key brute force mode is available for fans of
 [directory.io](http://www.directory.io/), try
 
-`brainflayer -v -I 0000000000000000000000000000000000000000000000000000000000000001 -b example.blf`
+    brainflayer -v -I 0000000000000000000000000000000000000000000000000000000000000001 -b example.blf
 
 See the output of `brainflayer -h` for more detailed usage info.
 
@@ -155,14 +156,22 @@ Generate BIP39 for BrainFlayer or similar applications.
 
 Parameters:
 
-- -n how many pieces to be generate.
-- -l how many words will there be in a generate?
-- -s Will the words be combined?
-- -w wordlist
+- `-n` how many pieces to be generate.
+- `-l` how many words will there be in a generate?
+- `-s` Will the words be combined?
+- `-w` wordlist
 
 Example command:
 
     ./brain12words.py -n 9000000000000000000 -l 12 -w brainwalletdictionary.txt | ./brainflayer -v -o found.txt -b bloom.blf
+
+#### Parallelization
+
+Distributing the password list on several processes, e.g:
+
+    mpirun -n 16 ./brainflayer -b example.blf -i crackstation-human-only.txt
+
+Also take look at this: [http://www.juliu5.com/brainflayer-parallelized/](https://web.archive.org/web/20150817221111/http://www.juliu5.com/brainflayer-parallelized).
 
 Building
 --------
@@ -174,12 +183,14 @@ about a build failure in libsecp256k1 I will close it.
 
 Dependencies should install with
 
-```
-apt install autoconf autogen git libtool make
-apt install build-essential libgmp-dev libgmp3-dev libssl-dev
-```
+    apt install autoconf autogen git libtool make
+    apt install build-essential libgmp-dev libgmp3-dev libssl-dev
 
-Supported build target is currently Ubuntu 20.04 on amd64/x86_64. Issues with
+You also need MPI installed:
+
+    apt install libopenmpi-dev openmpi-bin
+
+Supported build target is currently Ubuntu 20.04 on `amd64/x86_64`. Issues with
 building for other platforms probably won’t be fixed. In particular, Kali Linux
 is *not* supported. Support for operating systems other than Linux would require
 extensive refactoring of Brainflayer's memory optimizations and is not happening.
