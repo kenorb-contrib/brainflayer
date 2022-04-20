@@ -29,7 +29,7 @@ void secp256k1_ecmult(const secp256k1_ecmult_context_t *ctx, secp256k1_gej_t *r,
   abort();
 }
 
-static int secp256k1_eckey_pubkey_parse(secp256k1_ge_t *elem, const unsigned char *pub, int size);
+static int secp256k1_eckey_pubkey_parse(secp256k1_ge_t *elem, const unsigned char *pub, long unsigned int size);
 
 #include "mmapf.h"
 
