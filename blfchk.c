@@ -77,6 +77,11 @@ int main(int argc, char **argv) {
     bit = BH17(hash.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
     bit = BH18(hash.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
     bit = BH19(hash.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+    bit = BH20(hash.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+    bit = BH21(hash.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+    bit = BH22(hash.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+    bit = BH23(hash.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+    bit = BH24(hash.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
 
     if (hfile && !hsearchf(hfile, &hash)) {
       //fprintf(ofile, "%s (false positive)\n", hex(hash.uc, sizeof(hash.uc), buf, sizeof(buf)));
