@@ -176,7 +176,7 @@ Dependencies should install with:
 
 ```
 apt install autoconf autogen automake git libtool make
-apt install build-essential libgmp-dev libgmp3-dev libssl-dev
+apt install build-essential libgmp-dev libgmp3-dev libssl-dev zlib1g-dev
 ```
 
 Supported build target is currently Ubuntu 20.04 on amd64/x86_64. Issues with
