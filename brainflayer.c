@@ -2,8 +2,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <assert.h>
-#include <stdlib.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <stdio.h>
@@ -35,6 +36,9 @@
 // raise this if you really want, but quickly diminishing returns
 #define BATCH_MAX 4096
 
+// Number of supported bloom files.
+#define BOPT_MAX 10
+
 static int brainflayer_is_init = 0;
 
 typedef struct pubhashfn_s {
@@ -44,8 +48,8 @@ typedef struct pubhashfn_s {
 
 static unsigned char *mem;
 
-static mmapf_ctx bloom_mmapf;
-static unsigned char *bloom = NULL;
+static mmapf_ctx bloom_mmapf[10];
+static unsigned char *bloom, *blooms[10];
 
 static unsigned char *unhexed = NULL;
 static size_t unhexed_sz = 4096;
@@ -348,6 +352,7 @@ void usage(unsigned char *name) {
   printf("Usage: %s [OPTION]...\n\n\
  -a                          open output file in append mode\n\
  -b FILE                     check for matches against bloom filter FILE\n\
+                             multiple files be be specified\n\
  -f FILE                     verify matches against sorted hash160s in FILE\n\
  -i FILE                     read from FILE instead of stdin\n\
  -o FILE                     write to FILE instead of stdout\n\
@@ -369,7 +374,7 @@ void usage(unsigned char *name) {
                              rush   - rushwallet (requires -r) FAST\n\
                              keccak - keccak256 (ethercamp/old ethaddress)\n\
                              camp2  - keccak256 * 2031 (new ethercamp)\n\
-							 shaxn   - N rounds of SHA-256\n\
+							               shaxn  - N rounds of SHA-256\n\
  -x                          treat input as hex encoded\n\
  -s SALT                     use SALT for salted input types (default: none)\n\
  -p PASSPHRASE               use PASSPHRASE for salted input types, inputs\n\
@@ -411,10 +416,11 @@ int main(int argc, char **argv) {
 
   unsigned char modestr[64];
 
-  int spok = 0, aopt = 0, vopt = 0, wopt = 18, xopt = 0;
+  int spok = 0, aopt = 0, boptn = 0, vopt = 0, wopt = 18, xopt = 0;
   int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Nopt = 2;
   uint64_t kopt = 0;
-  unsigned char *bopt = NULL, *iopt = NULL, *oopt = NULL;
+  unsigned char *bopts[BOPT_MAX];
+  unsigned char *iopt = NULL, *oopt = NULL;
   unsigned char *topt = NULL, *sopt = NULL, *popt = NULL;
   unsigned char *mopt = NULL, *fopt = NULL, *ropt = NULL;
   unsigned char *Iopt = NULL, *copt = NULL;
@@ -464,7 +470,13 @@ int main(int argc, char **argv) {
         vopt = 1; // verbose
         break;
       case 'b':
-        bopt = optarg; // bloom filter file
+        if (boptn < BATCH_MAX) {
+          bopts[boptn] = optarg; // bloom filter file
+          boptn++;
+        }
+        else {
+          fprintf(stderr, "Number of bloom files reached maximum!\n");
+        }
         break;
       case 'f':
         fopt = optarg; // full filter file
@@ -515,7 +527,7 @@ int main(int argc, char **argv) {
     if (optind == 1 && argc == 2) {
       // older versions of brainflayer had the bloom filter file as a
       // single optional argument, this keeps compatibility with that
-      bopt = argv[1];
+      bopts[0] = argv[1];
     } else {
       fprintf(stderr, "Invalid arguments:\n");
       while (optind < argc) {
@@ -684,17 +696,22 @@ int main(int argc, char **argv) {
 
   snprintf(modestr, sizeof(modestr), xopt ? "(hex)%s" : "%s", topt);
 
-  if (bopt) {
-    if ((ret = mmapf(&bloom_mmapf, bopt, BLOOM_SIZE, MMAPF_RNDRD)) != MMAPF_OKAY) {
-      bail(1, "failed to open bloom filter '%s': %s\n", bopt, mmapf_strerror(ret));
-    } else if (bloom_mmapf.mem == NULL) {
-      bail(1, "got NULL pointer trying to set up bloom filter\n");
+  if (boptn > 0) {
+    for (int i = 0; i < boptn; i++) {
+      if (vopt) {
+        fprintf(stdout, "Loading %s...\n", bopts[i]);
+      }
+      if ((ret = mmapf(&bloom_mmapf[i], bopts[i], BLOOM_SIZE, MMAPF_RNDRD)) != MMAPF_OKAY) {
+        bail(1, "failed to open bloom filter '%s': %s\n", bopts[i], mmapf_strerror(ret));
+      } else if (bloom_mmapf[i].mem == NULL) {
+        bail(1, "got NULL pointer trying to set up bloom filter\n");
+      }
+      blooms[i] = bloom_mmapf[i].mem;
     }
-    bloom = bloom_mmapf.mem;
   }
 
   if (fopt) {
-    if (!bopt) {
+    if (boptn == 0) {
       bail(1, "The '-f' option must be used with a bloom filter\n");
     }
     if ((ffile = fopen(fopt, "r")) == NULL) {
@@ -793,39 +810,45 @@ int main(int argc, char **argv) {
 
     // loop over the public keys
     for (i = 0; i < batch_stopped; ++i) {
-      if (bloom) { /* crack mode */
+      if (boptn > 0) { /* crack mode */
         // loop over pubkey hash functions
         for (j = 0; pubhashfn[j].fn != NULL; ++j) {
+          bool bmatch = false;
           pubhashfn[j].fn(&hash160, batch_upub[i]);
 
-          unsigned int bit;
-          bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH20(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH21(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH22(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH23(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH24(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+          for (int k = 0; k < boptn; k++) {
+            unsigned int bit;
+            bloom = blooms[k];
+            bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH20(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH21(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH22(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH23(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bit = BH24(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+            bmatch = true;
+            break;
+          }
 
-          if (!fopt || hsearchf(ffile, &hash160)) {
+          if (bmatch && (!fopt || hsearchf(ffile, &hash160))) {
             if (tty) { fprintf(ofile, "\033[0K"); }
             // reformat/populate the line if required
             if (Iopt) {
