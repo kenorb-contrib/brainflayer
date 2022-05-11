@@ -363,6 +363,9 @@ void usage(unsigned char *name) {
                              c - compressed address\n\
                              e - ethereum address\n\
                              x - most signifigant bits of x coordinate\n\
+ -C                          keep original control characters\n\
+                             by default \\r and \\n are removed\n\
+                             (option is ignored in hex mode)\n\
  -t TYPE                     inputs are TYPE - supported types:\n\
                              sha256 (default) - classic brainwallet\n\
                              sha3   - sha3-256\n\
@@ -416,7 +419,7 @@ int main(int argc, char **argv) {
   unsigned char modestr[64];
 
   int spok = 0, aopt = 0, boptn = 0, vopt = 0, wopt = 18, xopt = 0;
-  int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Nopt = 2;
+  int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Copt = 0, Nopt = 2;
   uint64_t kopt = 0;
   unsigned char *bopts[BOPT_MAX];
   unsigned char *iopt = NULL, *oopt = NULL;
@@ -436,7 +439,7 @@ int main(int argc, char **argv) {
   unsigned char batch_priv[BATCH_MAX][32];
   unsigned char batch_upub[BATCH_MAX][65];
 
-  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:B:N:")) != -1) {
+  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:CI:B:N:")) != -1) {
     switch (c) {
       case 'a':
         aopt = 1; // open output file in append mode
@@ -503,6 +506,9 @@ int main(int argc, char **argv) {
         break;
       case 't':
         topt = optarg; // type of input
+        break;
+      case 'C':
+        Copt = 1;
         break;
       case 'I':
         Iopt = optarg; // start key for incremental
@@ -775,7 +781,7 @@ int main(int argc, char **argv) {
       batch_stopped = Bopt;
     } else {
       for (i = 0; i < Bopt; ++i) {
-        if ((batch_line_read[i] = getline(&batch_line[i], &batch_line_sz[i], ifile)-1) > -1) {
+        if ((batch_line_read[i] = getline(&batch_line[i], &batch_line_sz[i], ifile)) > -1) {
           if (skipping) {
             ++raw_lines;
             if (kopt && raw_lines < kopt) { --i; continue; }
@@ -784,7 +790,14 @@ int main(int argc, char **argv) {
         } else {
           break;
         }
-        batch_line[i][batch_line_read[i]] = 0;
+        if (!Copt || xopt) {
+          if (batch_line[i][batch_line_read[i]-1] == '\n') {
+            batch_line[i][--batch_line_read[i]] = 0;
+          }
+          if (batch_line[i][batch_line_read[i]-1] == '\r') {
+            batch_line[i][--batch_line_read[i]] = 0;
+          }
+        }
         if (xopt) {
           if (batch_line_read[i] / 2 > unhexed_sz) {
             unhexed_sz = batch_line_read[i];
