@@ -2,7 +2,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <assert.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -697,9 +696,10 @@ int main(int argc, char **argv) {
   snprintf(modestr, sizeof(modestr), xopt ? "(hex)%s" : "%s", topt);
 
   if (boptn > 0) {
+    printf("Loading... ");
     for (int i = 0; i < boptn; i++) {
       if (vopt) {
-        fprintf(stdout, "Loading %s...\n", bopts[i]);
+        fprintf(stdout, "%s... ", bopts[i]);
       }
       if ((ret = mmapf(&bloom_mmapf[i], bopts[i], BLOOM_SIZE, MMAPF_RNDRD)) != MMAPF_OKAY) {
         bail(1, "failed to open bloom filter '%s': %s\n", bopts[i], mmapf_strerror(ret));
@@ -708,6 +708,7 @@ int main(int argc, char **argv) {
       }
       blooms[i] = bloom_mmapf[i].mem;
     }
+    printf("\n");
   }
 
   if (fopt) {
@@ -813,7 +814,6 @@ int main(int argc, char **argv) {
       if (boptn > 0) { /* crack mode */
         // loop over pubkey hash functions
         for (j = 0; pubhashfn[j].fn != NULL; ++j) {
-          bool bmatch = false;
           pubhashfn[j].fn(&hash160, batch_upub[i]);
 
           for (int k = 0; k < boptn; k++) {
@@ -844,18 +844,17 @@ int main(int argc, char **argv) {
             bit = BH22(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
             bit = BH23(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
             bit = BH24(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bmatch = true;
-            break;
-          }
 
-          if (bmatch && (!fopt || hsearchf(ffile, &hash160))) {
-            if (tty) { fprintf(ofile, "\033[0K"); }
-            // reformat/populate the line if required
-            if (Iopt) {
-              hex(batch_priv[i], 32, batch_line[i], 65);
+            if (!fopt || hsearchf(ffile, &hash160)) {
+              if (tty) { fprintf(ofile, "\033[0K"); }
+              // reformat/populate the line if required
+              if (Iopt) {
+                hex(batch_priv[i], 32, batch_line[i], 65);
+              }
+              fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
+              ++olines;
+              break;
             }
-            fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
-            ++olines;
           }
         }
       } else { /* generate mode */
