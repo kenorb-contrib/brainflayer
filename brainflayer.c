@@ -867,6 +867,7 @@ int main(int argc, char **argv) {
               }
               fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
               ++olines;
+              k = boptn; // End a for loop.
               break;
             }
           }
