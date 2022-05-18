@@ -146,7 +146,7 @@ int secp256k1_ec_pubkey_precomp_table(int window_size, unsigned char *filename) 
       secp256k1_gej_add_var(&numsbase, &numsbase, &nums_gej, NULL);
     }
   }
-  secp256k1_ge_set_all_gej_var(n_windows*n_values, prec, table, 0);
+  secp256k1_ge_set_all_gej_var(prec, table, n_windows*n_values, 0);
 
   free(table);
   return 0;
@@ -313,13 +313,13 @@ int secp256k1_ec_pubkey_batch_init(unsigned int num) {
   }
 }
 
-void secp256k1_ge_set_all_gej_static(int num, secp256k1_ge *batchpa, secp256k1_gej *batchpj) {
+void secp256k1_ge_set_all_gej_static(secp256k1_ge *batchpa, secp256k1_gej *batchpj, int num) {
   size_t i;
   for (i = 0; i < num; i++) {
     batchaz[i] = batchpj[i].z;
   }
 
-  secp256k1_fe_inv_all_var(num, batchai, batchaz);
+  secp256k1_fe_inv_all_var(batchai, batchaz, num);
 
   for (i = 0; i < num; i++) {
     secp256k1_ge_set_gej_zinv(&batchpa[i], &batchpj[i], &batchai[i]);
@@ -370,7 +370,7 @@ int secp256k1_ec_pubkey_batch_incr(unsigned int num, unsigned int skip, unsigned
   }
 
   /* convert all jacobian coordinates to affine */
-  secp256k1_ge_set_all_gej_static(num, batchpa, batchpj);
+  secp256k1_ge_set_all_gej_static(batchpa, batchpj, num);
 
   /* write out formatted public key */
   for (i = 0; i < num; ++i) {
@@ -399,7 +399,7 @@ int secp256k1_ec_pubkey_batch_create(unsigned int num, unsigned char (*pub)[65],
   }
 
   /* convert all jacobian coordinates to affine */
-  secp256k1_ge_set_all_gej_static(num, batchpa, batchpj);
+  secp256k1_ge_set_all_gej_static(batchpa, batchpj, num);
 
   /* write out formatted public key */
   for (i = 0; i < num; ++i) {
