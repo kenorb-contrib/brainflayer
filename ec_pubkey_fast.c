@@ -146,7 +146,7 @@ int secp256k1_ec_pubkey_precomp_table(int window_size, unsigned char *filename) 
       secp256k1_gej_add_var(&numsbase, &numsbase, &nums_gej, NULL);
     }
   }
-  secp256k1_ge_set_all_gej_var(prec, table, n_windows*n_values, 0);
+  secp256k1_ge_set_all_gej_var(prec, table, n_windows*n_values);
 
   free(table);
   return 0;
