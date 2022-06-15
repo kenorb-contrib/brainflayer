@@ -33,7 +33,7 @@
 #include "algo/sha3.h"
 
 // raise this if you really want, but quickly diminishing returns
-#define BATCH_MAX 4096
+#define BATCH_MAX 4096*2
 
 // Number of supported bloom files.
 #define BOPT_MAX 10
@@ -703,7 +703,9 @@ int main(int argc, char **argv) {
   snprintf(modestr, sizeof(modestr), xopt ? "(hex)%s" : "%s", topt);
 
   if (boptn > 0) {
-    printf("Loading... ");
+    if (vopt) {
+      printf("Loading... ");
+    }
     for (int i = 0; i < boptn; i++) {
       if (vopt) {
         fprintf(stdout, "%s... ", bopts[i]);
