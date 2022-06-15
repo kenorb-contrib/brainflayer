@@ -33,7 +33,7 @@
 #include "algo/sha3.h"
 
 // raise this if you really want, but quickly diminishing returns
-#define BATCH_MAX 4096*2
+#define BATCH_MAX 4096*4
 
 // Number of supported bloom files.
 #define BOPT_MAX 10
