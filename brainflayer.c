@@ -389,7 +389,7 @@ void usage(unsigned char *name) {
  -B                          batch size for affine transformations\n\
                              must be a power of 2 (default/max: %d)\n\
  -N                          number of SHA rounds (used only in '-t shaxn' mode)\n\
- -w WINDOW_SIZE              window size for ecmult table (default: 18)\n\
+ -w WINDOW_SIZE              window size for ecmult table (default: 19)\n\
                              uses about 3 * 2^w KiB memory on startup, but\n\
                              only about 2^w KiB once the table is built\n\
  -m FILE                     load ecmult table from FILE\n\
@@ -419,7 +419,7 @@ int main(int argc, char **argv) {
 
   unsigned char modestr[64];
 
-  int spok = 0, aopt = 0, boptn = 0, vopt = 0, wopt = 18, xopt = 0;
+  int spok = 0, aopt = 0, boptn = 0, vopt = 0, wopt = 19, xopt = 0;
   int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Copt = 0, Nopt = 2;
   uint64_t kopt = 0;
   unsigned char *bopts[BOPT_MAX];
