@@ -40,7 +40,7 @@ def generate(prefix=False, number=5):
             word1 = CODEWORDS[int(random.uniform(0, len(CODEWORDS)))]
 
         word2 = CODEWORDS[int(random.uniform(0, len(CODEWORDS)))]
-        print("%s %s" % (word1.rstrip(), word2.rstrip()))
+        print(f"{word1.rstrip()} {word2.rstrip()}")
 
         number -= 1
 
@@ -70,17 +70,13 @@ def main(argv=None):
                 number = int(value)
             if option in ("-w", "--wordlist"):
                 global CODEWORDS
-                print("Importing: %s" % value)
+                print(f"Importing: {value}")
                 CODEWORDS = open(value, "r").readlines()
             if option in ("-p", "--prefixe"):
 
                 print(value)
 
-                if value:
-                    prefix = value
-                else:
-                    prefix = "TRUE"
-
+                prefix = value if value else "TRUE"
         generate(prefix, number)
 
     except Usage as err:
