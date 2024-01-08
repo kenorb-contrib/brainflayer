@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* 2^32 bits */
-#define BLOOM_SIZE (512*1024*1024)
+#define BLOOM_SIZE (512*1024*1024*2)
 
 #define BLOOM_SET_BIT(N) (bloom[(N)>>3] = bloom[(N)>>3] | (1<<((N)&7)))
 #define BLOOM_GET_BIT(N) ( ( bloom[(N)>>3]>>((N)&7) )&1)
@@ -33,6 +33,11 @@
 #define BH17(N) (N[2]<<24|N[3]>> 8)
 #define BH18(N) (N[3]<<24|N[4]>> 8)
 #define BH19(N) (N[4]<<24|N[0]>> 8)
+#define BH20(N) (N[0]<<16|N[1]>>24)
+#define BH21(N) (N[1]<<16|N[2]>>24)
+#define BH22(N) (N[2]<<16|N[3]>>24)
+#define BH23(N) (N[3]<<16|N[4]>>24)
+#define BH24(N) (N[4]<<16|N[0]>>24)
 
 void bloom_set_hash160(unsigned char *, uint32_t *);
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -58,6 +63,11 @@ static unsigned int bloom_chk_hash160(unsigned char *bloom, uint32_t *h) {
   t = BH17(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
   t = BH18(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
   t = BH19(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+  t = BH20(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+  t = BH21(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+  t = BH22(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+  t = BH23(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
+  t = BH24(h); if (BLOOM_GET_BIT(t) == 0) { return 0; }
   return 1;
 }
 #pragma GCC diagnostic pop

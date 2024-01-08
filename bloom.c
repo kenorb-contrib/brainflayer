@@ -34,6 +34,11 @@ void bloom_set_hash160(unsigned char *bloom, uint32_t *h) {
   t = BH17(h); BLOOM_SET_BIT(t);
   t = BH18(h); BLOOM_SET_BIT(t);
   t = BH19(h); BLOOM_SET_BIT(t);
+  t = BH20(h); BLOOM_SET_BIT(t);
+  t = BH21(h); BLOOM_SET_BIT(t);
+  t = BH22(h); BLOOM_SET_BIT(t);
+  t = BH23(h); BLOOM_SET_BIT(t);
+  t = BH24(h); BLOOM_SET_BIT(t);
 }
 
 /*

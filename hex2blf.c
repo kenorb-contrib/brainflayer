@@ -19,8 +19,8 @@
 #include "bloom.h"
 #include "hash160.h"
 
-const double k_hashes = 20;
-const double m_bits   = 4294967296;
+const double k_hashes = 25;
+const double m_bits   = 4294967296*2;
 
 int main(int argc, char **argv) {
   hash160_t hash;
