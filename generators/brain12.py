@@ -50,21 +50,7 @@ def generate(prefix=False, number=5):
             word11 = CODEWORDS[int(random.uniform(0, len(CODEWORDS)))]
             word12 = CODEWORDS[int(random.uniform(0, len(CODEWORDS)))]
         print(
-            " %s %s %s %s %s %s %s %s %s %s %s %s "
-            % (
-                word1.rstrip(),
-                word2.rstrip(),
-                word3.rstrip(),
-                word4.rstrip(),
-                word5.rstrip(),
-                word6.rstrip(),
-                word7.rstrip(),
-                word8.rstrip(),
-                word9.rstrip(),
-                word10.rstrip(),
-                word11.rstrip(),
-                word12.rstrip(),
-            )
+            f" {word1.rstrip()} {word2.rstrip()} {word3.rstrip()} {word4.rstrip()} {word5.rstrip()} {word6.rstrip()} {word7.rstrip()} {word8.rstrip()} {word9.rstrip()} {word10.rstrip()} {word11.rstrip()} {word12.rstrip()} "
         )
 
         number -= 1
@@ -95,17 +81,13 @@ def main(argv=None):
                 number = int(value)
             if option in ("-w", "--wordlist"):
                 global CODEWORDS
-                print("Importing: %s" % value)
+                print(f"Importing: {value}")
                 CODEWORDS = open(value, "r").readlines()
             if option in ("-p", "--prefixe"):
 
                 print(value)
 
-                if value:
-                    prefix = value
-                else:
-                    prefix = "TRUE"
-
+                prefix = value if value else "TRUE"
         generate(prefix, number)
 
     except Usage as err:
