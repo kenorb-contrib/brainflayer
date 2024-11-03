@@ -172,11 +172,11 @@ installed (at least openssl and gmp are required along with libsecp256k1's
 build dependencies). I really need to learn autotools. If you file an issue
 about a build failure in libsecp256k1 I will close it.
 
-Dependencies should install with
+Dependencies should install with:
 
 ```
-apt install autoconf autogen git libtool make
-apt install build-essential libgmp-dev libgmp3-dev libssl-dev
+apt install autoconf autogen automake git libtool make
+apt install build-essential libgmp-dev libgmp3-dev libssl-dev zlib1g-dev
 ```
 
 Supported build target is currently Ubuntu 20.04 on amd64/x86_64. Issues with

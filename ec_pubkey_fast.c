@@ -24,12 +24,12 @@
 #include "secp256k1/src/ecmult.h"
 #include "secp256k1/src/eckey_impl.h"
 
-void secp256k1_ecmult(const secp256k1_ecmult_context_t *ctx, secp256k1_gej_t *r, const secp256k1_gej_t *a, const secp256k1_scalar_t *na, const secp256k1_scalar_t *ng) {
+void secp256k1_ecmult(const secp256k1_ecmult_context *ctx, secp256k1_gej *r, const secp256k1_gej *a, const secp256k1_scalar *na, const secp256k1_scalar *ng) {
   fprintf(stderr, "there is no secp256k1_ecmult %p %p %p %p %p\n", (void*)ctx, (void*)r, (void*)a, (void*)na, (void*)ng);
   abort();
 }
 
-static int secp256k1_eckey_pubkey_parse(secp256k1_ge_t *elem, const unsigned char *pub, int size);
+static int secp256k1_eckey_pubkey_parse(secp256k1_ge *elem, const unsigned char *pub, long unsigned int size);
 
 #include "mmapf.h"
 
@@ -39,8 +39,8 @@ static int secp256k1_eckey_pubkey_parse(secp256k1_ge_t *elem, const unsigned cha
 #define SETBIT(T, B, V) (T = V ? T | (1<<B) : T & ~(1<<B))
 int n_windows = 0;
 int n_values;
-secp256k1_gej_t nums_gej;
-secp256k1_ge_t *prec;
+secp256k1_gej nums_gej;
+secp256k1_ge *prec;
 int remmining = 0;
 int WINDOW_SIZE = 0;
 size_t MMAP_SIZE;
@@ -59,7 +59,7 @@ int secp256k1_ec_pubkey_precomp_table_save(int window_size, unsigned char *filen
 
   records = n_windows*n_values;
   dest = fdopen(fd, "w");
-  if (fwrite(prec, sizeof(secp256k1_ge_t), n_windows*n_values, dest) != records)
+  if (fwrite(prec, sizeof(secp256k1_ge), n_windows*n_values, dest) != records)
     return -1;
 
   return 0;
@@ -69,8 +69,8 @@ int secp256k1_ec_pubkey_precomp_table(int window_size, unsigned char *filename) 
   int ret;
   struct stat sb;
   size_t prec_sz;
-  secp256k1_gej_t gj; // base point in jacobian coordinates
-  secp256k1_gej_t *table;
+  secp256k1_gej gj; // base point in jacobian coordinates
+  secp256k1_gej *table;
 
   if (filename) {
     if (stat(filename, &sb) == 0) {
@@ -91,7 +91,7 @@ int secp256k1_ec_pubkey_precomp_table(int window_size, unsigned char *filename) 
       n_windows = (256 / window_size) + 1;
     }
     remmining = 256 % window_size;
-    prec_sz = n_windows*n_values*sizeof(secp256k1_ge_t);
+    prec_sz = n_windows*n_values*sizeof(secp256k1_ge);
     if (!filename || sb.st_size <= prec_sz)
       break;
     ++window_size;
@@ -108,23 +108,23 @@ int secp256k1_ec_pubkey_precomp_table(int window_size, unsigned char *filename) 
 
   if (filename) { return 0; }
 
-  table = malloc(n_windows*n_values*sizeof(secp256k1_gej_t));
+  table = malloc(n_windows*n_values*sizeof(secp256k1_gej));
 
   secp256k1_gej_set_ge(&gj, &secp256k1_ge_const_g);
 
   //fprintf(stderr, "%d %d %d %d %zu\n", window_size, n_windows, n_values, remmining, prec_sz);
 
   static const unsigned char nums_b32[33] = "The scalar for this x is unknown";
-  secp256k1_fe_t nums_x;
-  secp256k1_ge_t nums_ge;
+  secp256k1_fe nums_x;
+  secp256k1_ge nums_ge;
   VERIFY_CHECK(secp256k1_fe_set_b32(&nums_x, nums_b32));
   VERIFY_CHECK(secp256k1_ge_set_xo_var(&nums_ge, &nums_x, 0));
   secp256k1_gej_set_ge(&nums_gej, &nums_ge);
   /* Add G to make the bits in x uniformly distributed. */
   secp256k1_gej_add_ge_var(&nums_gej, &nums_gej, &secp256k1_ge_const_g, NULL);
 
-  secp256k1_gej_t gbase;
-  secp256k1_gej_t numsbase;
+  secp256k1_gej gbase;
+  secp256k1_gej numsbase;
   gbase = gj; /* (2^w_size)^num_of_windows * G */
   numsbase = nums_gej; /* 2^num_of_windows * nums. */
 
@@ -146,13 +146,13 @@ int secp256k1_ec_pubkey_precomp_table(int window_size, unsigned char *filename) 
       secp256k1_gej_add_var(&numsbase, &numsbase, &nums_gej, NULL);
     }
   }
-  secp256k1_ge_set_all_gej_var(n_windows*n_values, prec, table, 0);
+  secp256k1_ge_set_all_gej_var(prec, table, n_windows*n_values);
 
   free(table);
   return 0;
 }
 
-static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *seckey){
+static void secp256k1_ecmult_gen2(secp256k1_gej *r, const unsigned char *seckey){
   unsigned char a[256];
   for (int j = 0; j < 32; j++) {
     for (int i = 0; i < 8; i++) {
@@ -184,8 +184,8 @@ static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *secke
 }
 
 #ifdef USE_BL_ARITHMETIC
-static void secp256k1_gej_add_ge_bl(secp256k1_gej_t *r, const secp256k1_gej_t *a, const secp256k1_ge_t *b, secp256k1_fe_t *rzr) {
-  secp256k1_fe_t z1z1, /*z1,*/ u2, x1, y1, t0, s2, h, hh, i, j, t1, rr,  v, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11;
+static void secp256k1_gej_add_ge_bl(secp256k1_gej *r, const secp256k1_gej *a, const secp256k1_ge *b, secp256k1_fe *rzr) {
+  secp256k1_fe z1z1, /*z1,*/ u2, x1, y1, t0, s2, h, hh, i, j, t1, rr,  v, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11;
   // 7M + 4S + 2 normalize + 22 mul_int/add/negate
   if (a->infinity) {
     VERIFY_CHECK(rzr == NULL);
@@ -244,7 +244,7 @@ static void secp256k1_gej_add_ge_bl(secp256k1_gej_t *r, const secp256k1_gej_t *a
 
 }
 
-static void secp256k1_ecmult_gen_bl(secp256k1_gej_t *r, const unsigned char *seckey){
+static void secp256k1_ecmult_gen_bl(secp256k1_gej *r, const unsigned char *seckey){
   unsigned char a[256];
   for (int j = 0; j < 32; j++){
     for (int i = 0; i < 8; i++){
@@ -275,8 +275,8 @@ static void secp256k1_ecmult_gen_bl(secp256k1_gej_t *r, const unsigned char *sec
 #endif
 
 int secp256k1_ec_pubkey_create_precomp(unsigned char *pub_chr, int *pub_chr_sz, const unsigned char *seckey) {
-  secp256k1_gej_t pj;
-  secp256k1_ge_t p;
+  secp256k1_gej pj;
+  secp256k1_ge p;
 
 #ifdef USE_BL_ARITHMETIC
   secp256k1_ecmult_gen_bl(&pj, seckey);
@@ -296,16 +296,16 @@ int secp256k1_ec_pubkey_create_precomp(unsigned char *pub_chr, int *pub_chr_sz, 
   return 0;
 }
 
-static secp256k1_gej_t *batchpj;
-static secp256k1_ge_t  *batchpa;
-static secp256k1_fe_t  *batchaz;
-static secp256k1_fe_t  *batchai;
+static secp256k1_gej *batchpj;
+static secp256k1_ge  *batchpa;
+static secp256k1_fe  *batchaz;
+static secp256k1_fe  *batchai;
 
 int secp256k1_ec_pubkey_batch_init(unsigned int num) {
-  if (!batchpj) { batchpj = malloc(sizeof(secp256k1_gej_t)*num); }
-  if (!batchpa) { batchpa = malloc(sizeof(secp256k1_ge_t)*num);  }
-  if (!batchaz) { batchaz = malloc(sizeof(secp256k1_fe_t)*num);  }
-  if (!batchai) { batchai = malloc(sizeof(secp256k1_fe_t)*num);  }
+  if (!batchpj) { batchpj = malloc(sizeof(secp256k1_gej)*num); }
+  if (!batchpa) { batchpa = malloc(sizeof(secp256k1_ge)*num);  }
+  if (!batchaz) { batchaz = malloc(sizeof(secp256k1_fe)*num);  }
+  if (!batchai) { batchai = malloc(sizeof(secp256k1_fe)*num);  }
   if (batchpj == NULL || batchpa == NULL || batchaz == NULL || batchai == NULL) {
     return 1;
   } else {
@@ -313,13 +313,13 @@ int secp256k1_ec_pubkey_batch_init(unsigned int num) {
   }
 }
 
-void secp256k1_ge_set_all_gej_static(int num, secp256k1_ge_t *batchpa, secp256k1_gej_t *batchpj) {
+void secp256k1_ge_set_all_gej_static(secp256k1_ge *batchpa, secp256k1_gej *batchpj, int num) {
   size_t i;
   for (i = 0; i < num; i++) {
     batchaz[i] = batchpj[i].z;
   }
 
-  secp256k1_fe_inv_all_var(num, batchai, batchaz);
+  secp256k1_fe_inv_all_var(batchai, batchaz, num);
 
   for (i = 0; i < num; i++) {
     secp256k1_ge_set_gej_zinv(&batchpa[i], &batchpj[i], &batchai[i]);
@@ -335,9 +335,9 @@ int secp256k1_ec_pubkey_batch_incr(unsigned int num, unsigned int skip, unsigned
 
   unsigned char b32[32];
 
-  secp256k1_scalar_t priv, incr_s;
-  secp256k1_gej_t temp;
-  secp256k1_ge_t incr_a;
+  secp256k1_scalar priv, incr_s;
+  secp256k1_gej temp;
+  secp256k1_ge incr_a;
 
   /* load staring private key */
   secp256k1_scalar_set_b32(&priv, start, NULL);
@@ -370,7 +370,7 @@ int secp256k1_ec_pubkey_batch_incr(unsigned int num, unsigned int skip, unsigned
   }
 
   /* convert all jacobian coordinates to affine */
-  secp256k1_ge_set_all_gej_static(num, batchpa, batchpj);
+  secp256k1_ge_set_all_gej_static(batchpa, batchpj, num);
 
   /* write out formatted public key */
   for (i = 0; i < num; ++i) {
@@ -399,7 +399,7 @@ int secp256k1_ec_pubkey_batch_create(unsigned int num, unsigned char (*pub)[65],
   }
 
   /* convert all jacobian coordinates to affine */
-  secp256k1_ge_set_all_gej_static(num, batchpa, batchpj);
+  secp256k1_ge_set_all_gej_static(batchpa, batchpj, num);
 
   /* write out formatted public key */
   for (i = 0; i < num; ++i) {
@@ -415,7 +415,7 @@ int secp256k1_ec_pubkey_batch_create(unsigned int num, unsigned char (*pub)[65],
 }
 
 int secp256k1_scalar_add_b32(void * out, void * a, void *b) {
-  secp256k1_scalar_t tmp_a, tmp_b;
+  secp256k1_scalar tmp_a, tmp_b;
 
   secp256k1_scalar_set_b32(&tmp_a, a, NULL);
   secp256k1_scalar_set_b32(&tmp_b, b, NULL);
@@ -452,9 +452,9 @@ void priv_add_uint32(unsigned char *priv, unsigned int add) {
 }
 
 typedef struct {
-  secp256k1_gej_t pubj;
-  secp256k1_ge_t  inc;
-  secp256k1_gej_t incj;
+  secp256k1_gej pubj;
+  secp256k1_ge  inc;
+  secp256k1_gej incj;
   unsigned int n;
 } pubkey_incr_t;
 
@@ -481,7 +481,7 @@ int secp256k1_ec_pubkey_incr_init(unsigned char *seckey, unsigned int add) {
 }
 
 int secp256k1_ec_pubkey_incr(unsigned char *pub_chr, int *pub_chr_sz, unsigned char *seckey) {
-  secp256k1_ge_t p;
+  secp256k1_ge p;
 
   priv_add_uint32(seckey, pubkey_incr_ctx.n);
 #ifdef USE_BL_ARITHMETIC
@@ -504,7 +504,7 @@ int secp256k1_ec_pubkey_incr(unsigned char *pub_chr, int *pub_chr_sz, unsigned c
 }
 
 void * secp256k1_ec_priv_to_gej(unsigned char *priv) {
-  secp256k1_gej_t *gej = malloc(sizeof(secp256k1_gej_t));
+  secp256k1_gej *gej = malloc(sizeof(secp256k1_gej));
 #ifdef USE_BL_ARITHMETIC
   secp256k1_ecmult_gen_bl(gej, priv);
 #else
@@ -515,17 +515,17 @@ void * secp256k1_ec_priv_to_gej(unsigned char *priv) {
 }
 
 int secp256k1_ec_pubkey_add_gej(unsigned char *pub_chr, int *pub_chr_sz, void *add) {
-  secp256k1_ge_t  in;
-  secp256k1_ge_t  p;
+  secp256k1_ge  in;
+  secp256k1_ge  p;
 
-  secp256k1_gej_t out;
+  secp256k1_gej out;
 
   secp256k1_eckey_pubkey_parse(&in, pub_chr, *pub_chr_sz);
 
 #ifdef USE_BL_ARITHMETIC
-  secp256k1_gej_add_ge_bl(&out, (secp256k1_gej_t *)add, &in, NULL);
+  secp256k1_gej_add_ge_bl(&out, (secp256k1_gej *)add, &in, NULL);
 #else
-  secp256k1_gej_add_ge_var(&out, (secp256k1_gej_t *)add, &in, NULL);
+  secp256k1_gej_add_ge_var(&out, (secp256k1_gej *)add, &in, NULL);
 #endif
 
   secp256k1_ge_set_gej(&p, &out);

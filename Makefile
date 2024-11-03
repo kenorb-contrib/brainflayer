@@ -43,7 +43,7 @@ algo/brainwalletio.o: algo/brainwalletio.c scrypt-jane/scrypt-jane.h
 algo/brainv2.o: algo/brainv2.c scrypt-jane/scrypt-jane.h
 
 ec_pubkey_fast.o: ec_pubkey_fast.c secp256k1/include/secp256k1.h
-	$(COMPILE) -Wno-unused-function -c $< -o $@
+	$(COMPILE) -Wno-unused-function -c $< -o $@ -I secp256k1
 
 %.o: %.c
 	$(COMPILE) -c $< -o $@
