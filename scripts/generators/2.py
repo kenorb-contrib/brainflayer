@@ -13,4 +13,4 @@ with open("base") as file2:
     for line in file2.lines():
         id_ = line.split()[0]
         if id_ in ids:
-            found.append("{} {}".format(ids[id_], line))
+            found.append(f"{ids[id_]} {line}")
