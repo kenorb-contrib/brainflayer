@@ -30,9 +30,9 @@
 #define SHA256_DESC_AVX2       "Intel AVX2 (x64 asm)"
 #define SHA256_DESC_SHAEXT     "Intel SHA-NI (x64 asm)"
 
-void (*SHA2_256_Transform)(uint32_t *digest, const char *data, uint32_t nblk);
+extern void (*SHA2_256_Transform)(uint32_t *digest, const char *data, uint32_t nblk);
 
-void (*ripemd160_xform_func)(uint32_t *digest, const char *data);
+extern void (*ripemd160_xform_func)(uint32_t *digest, const char *data);
 
 typedef struct {
   uint8_t data[64];
