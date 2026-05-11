@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <ctype.h>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -14,6 +15,7 @@
 #include <arpa/inet.h> /*  for ntohl/htonl */
 
 #include <math.h> /* pow/exp */
+#include <openssl/sha.h>
 
 #include "hex.h"
 #include "bloom.h"
@@ -21,6 +23,76 @@
 
 const double k_hashes = 25;
 const double m_bits   = 4294967296*2;
+
+static int b58_value(unsigned char c) {
+  static const char *alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const char *p = strchr(alphabet, c);
+  return p ? (int)(p - alphabet) : -1;
+}
+
+static int parse_hash160_from_base58check(const unsigned char *str, size_t str_sz, hash160_t *hash) {
+  size_t i, j, leading_ones = 0, leading_zeros = 0, payload_len;
+  int carry, v;
+  unsigned char decoded[64] = {0};
+  unsigned char payload[32];
+  unsigned char digest[SHA256_DIGEST_LENGTH];
+
+  if (str_sz == 0 || str_sz > sizeof(decoded)) { return 0; }
+
+  for (i = 0; i < str_sz && str[i] == '1'; ++i) { ++leading_ones; }
+
+  for (i = 0; i < str_sz; ++i) {
+    v = b58_value(str[i]);
+    if (v < 0) { return 0; }
+    carry = v;
+    for (j = sizeof(decoded); j-- > 0;) {
+      carry += 58 * decoded[j];
+      decoded[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    if (carry != 0) { return 0; }
+  }
+
+  for (i = 0; i < sizeof(decoded) && decoded[i] == 0; ++i) { ++leading_zeros; }
+
+  payload_len = leading_ones + sizeof(decoded) - leading_zeros;
+  if (payload_len != 25) { return 0; }
+  if (leading_ones > sizeof(payload)) { return 0; }
+
+  memset(payload, 0, leading_ones);
+  memcpy(payload + leading_ones, decoded + leading_zeros, sizeof(decoded) - leading_zeros);
+
+  SHA256(payload, 21, digest);
+  SHA256(digest, SHA256_DIGEST_LENGTH, digest);
+  if (memcmp(payload + 21, digest, 4) != 0) { return 0; }
+
+  memcpy(hash->uc, payload + 1, sizeof(hash->uc));
+  return 1;
+}
+
+static int parse_hash160_line(char *line, hash160_t *hash) {
+  size_t i, line_sz;
+  unsigned char *p;
+
+  p = (unsigned char *)line;
+  while (*p && isspace(*p)) { ++p; }
+
+  line_sz = strlen((char *)p);
+  while (line_sz > 0 && isspace(p[line_sz - 1])) { --line_sz; }
+  if (line_sz == 0) { return 0; }
+
+  if (line_sz >= 40) {
+    for (i = 0; i < 40; ++i) {
+      if (!isxdigit(p[i])) { break; }
+    }
+    if (i == 40) {
+      unhex(p, 40, hash->uc, sizeof(hash->uc));
+      return 1;
+    }
+  }
+
+  return parse_hash160_from_base58check(p, line_sz, hash);
+}
 
 int main(int argc, char **argv) {
   hash160_t hash;
@@ -33,9 +105,10 @@ int main(int argc, char **argv) {
   char *line;
 
   double err_rate;
+  int parsed;
 
   if (argc != 3) {
-    fprintf(stderr, "[!] Usage: %s hashfile.hex bloomfile.blf\n", argv[0]);
+    fprintf(stderr, "[!] Usage: %s hashfile_or_addresses.txt bloomfile.blf\n", argv[0]);
     exit(1);
   }
 
@@ -84,10 +157,11 @@ int main(int argc, char **argv) {
 
   i = 0;
   stat(hashfile, &sb);
-  fprintf(stderr, "[*] Loading hash160s from '%s' \033[s  0.0%%", hashfile);
+  fprintf(stderr, "[*] Loading hash160s/addresses from '%s' \033[s  0.0%%", hashfile);
   while (getline(&line, &line_sz, f) > 0) {
+    parsed = parse_hash160_line(line, &hash);
+    if (!parsed) { continue; }
     ++line_ct;
-    unhex(line, strlen(line), hash.uc, sizeof(hash.uc));
     bloom_set_hash160(bloom, hash.ul);
 
     if ((++i & 0x3ffff) == 0) {

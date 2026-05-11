@@ -64,6 +64,9 @@ Precompute the bloom filter:
 
 `hex2blf example.hex example.blf`
 
+`hex2blf` accepts either hash160 values in hex (legacy behavior) or Bitcoin
+Base58Check addresses (for direct work with address lists).
+
 Run Brainflayer against it:
 
 `brainflayer -v -b example.blf -i phraselist.txt`
