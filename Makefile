@@ -13,8 +13,9 @@ COMPILE = gcc $(CFLAGS)
 
 all: $(BINARIES)
 
-test: hex2blf blfchk
+test: hex2blf blfchk brainflayer
 	./tests/test_hex2blf_input_types.sh
+	./tests/test_brainflayer_bloom.sh
 
 .git:
 	@echo 'This does not look like a cloned git repo. Unable to fetch submodules.'
