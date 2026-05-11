@@ -26,6 +26,7 @@ const double m_bits   = 4294967296*2;
 static const size_t hash160_hex_len = 40;
 static const size_t cpub_hex_len = 66;
 static const size_t upub_hex_len = 130;
+#define MAX_B58_DECODED_LEN 64
 
 typedef struct input_types_s {
   int hash160_hex;
@@ -51,7 +52,7 @@ static int parse_hash160_from_base58check(const unsigned char *str, size_t str_s
   size_t i, j, leading_ones = 0, leading_zeros = 0, payload_len, decoded_len;
   int carry, v;
   /* Bitcoin Base58Check addresses are usually 26-35 chars; 50 is a safe upper bound. */
-  unsigned char decoded[64] = {0}; /* comfortably larger than any valid decoded address length (25 bytes) */
+  unsigned char decoded[MAX_B58_DECODED_LEN] = {0}; /* valid decoded address length is 25 bytes */
   unsigned char payload[25];
   unsigned char digest[SHA256_DIGEST_LENGTH];
 
@@ -87,6 +88,15 @@ static int parse_hash160_from_base58check(const unsigned char *str, size_t str_s
 
   memcpy(hash->uc, payload + 1, sizeof(hash->uc));
   return 1;
+}
+
+static void format_enabled_types(const input_types_t *types, char *buf, size_t buf_sz) {
+  size_t n = 0;
+  if (types->hash160_hex && n + 1 < buf_sz) { buf[n++] = 'h'; }
+  if (types->btc_address && n + 1 < buf_sz) { buf[n++] = 'a'; }
+  if (types->cpub_hex && n + 1 < buf_sz) { buf[n++] = 'c'; }
+  if (types->upub_hex && n + 1 < buf_sz) { buf[n++] = 'u'; }
+  buf[n] = 0;
 }
 
 static int parse_hash160_from_pubkey_hex(const unsigned char *str, size_t str_sz, hash160_t *hash, int compressed) {
@@ -164,6 +174,7 @@ int main(int argc, char **argv) {
 
   double err_rate;
   int parsed;
+  char enabled_types[8];
 
   while ((opt = getopt(argc, argv, "t:h")) != -1) {
     switch (opt) {
@@ -215,6 +226,7 @@ int main(int argc, char **argv) {
 
   hashfile = (unsigned char *)argv[optind + 0];
   bloomfile = (unsigned char *)argv[optind + 1];
+  format_enabled_types(&types, enabled_types, sizeof(enabled_types));
 
   if ((f = fopen(hashfile, "r")) == NULL) {
     fprintf(stderr, "[!] Failed to open hash160 file '%s'\n", hashfile);
@@ -263,7 +275,7 @@ int main(int argc, char **argv) {
     ++line_no;
     parsed = parse_hash160_line(line, &hash, &types);
     if (!parsed) {
-      fprintf(stderr, "[!] Skipping invalid input at line %zu\n", line_no);
+      fprintf(stderr, "[!] Skipping invalid input at line %zu (expected types: %s)\n", line_no, enabled_types);
       continue;
     }
     ++line_ct;
