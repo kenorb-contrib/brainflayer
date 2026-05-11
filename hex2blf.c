@@ -23,6 +23,7 @@
 
 const double k_hashes = 25;
 const double m_bits   = 4294967296*2;
+static const size_t hash160_hex_len = 40;
 
 static int b58_value(unsigned char c) {
   static const char *alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -31,13 +32,13 @@ static int b58_value(unsigned char c) {
 }
 
 static int parse_hash160_from_base58check(const unsigned char *str, size_t str_sz, hash160_t *hash) {
-  size_t i, j, leading_ones = 0, leading_zeros = 0, payload_len;
+  size_t i, j, leading_ones = 0, leading_zeros = 0, payload_len, decoded_len;
   int carry, v;
   unsigned char decoded[64] = {0};
-  unsigned char payload[32];
+  unsigned char payload[25];
   unsigned char digest[SHA256_DIGEST_LENGTH];
 
-  if (str_sz == 0 || str_sz > sizeof(decoded)) { return 0; }
+  if (str_sz == 0 || str_sz > 50) { return 0; }
 
   for (i = 0; i < str_sz && str[i] == '1'; ++i) { ++leading_ones; }
 
@@ -55,12 +56,13 @@ static int parse_hash160_from_base58check(const unsigned char *str, size_t str_s
 
   for (i = 0; i < sizeof(decoded) && decoded[i] == 0; ++i) { ++leading_zeros; }
 
-  payload_len = leading_ones + sizeof(decoded) - leading_zeros;
+  decoded_len = sizeof(decoded) - leading_zeros;
+  payload_len = leading_ones + decoded_len;
   if (payload_len != 25) { return 0; }
-  if (leading_ones > sizeof(payload)) { return 0; }
+  if (leading_ones > sizeof(payload) || decoded_len > sizeof(payload) - leading_ones) { return 0; }
 
   memset(payload, 0, leading_ones);
-  memcpy(payload + leading_ones, decoded + leading_zeros, sizeof(decoded) - leading_zeros);
+  memcpy(payload + leading_ones, decoded + leading_zeros, decoded_len);
 
   SHA256(payload, 21, digest);
   SHA256(digest, SHA256_DIGEST_LENGTH, digest);
@@ -81,12 +83,12 @@ static int parse_hash160_line(char *line, hash160_t *hash) {
   while (line_sz > 0 && isspace(p[line_sz - 1])) { --line_sz; }
   if (line_sz == 0) { return 0; }
 
-  if (line_sz >= 40) {
-    for (i = 0; i < 40; ++i) {
+  if (line_sz >= hash160_hex_len) {
+    for (i = 0; i < hash160_hex_len; ++i) {
       if (!isxdigit(p[i])) { break; }
     }
-    if (i == 40) {
-      unhex(p, 40, hash->uc, sizeof(hash->uc));
+    if (i == hash160_hex_len) {
+      unhex(p, hash160_hex_len, hash->uc, sizeof(hash->uc));
       return 1;
     }
   }
