@@ -26,6 +26,7 @@ const double m_bits   = 4294967296*2;
 static const size_t hash160_hex_len = 40;
 static const size_t cpub_hex_len = 66;
 static const size_t upub_hex_len = 130;
+/* Intermediate buffer for Base58 decoding math; final payload must still decode to 25 bytes. */
 #define MAX_B58_DECODED_LEN 64
 
 typedef struct input_types_s {
@@ -52,7 +53,7 @@ static int parse_hash160_from_base58check(const unsigned char *str, size_t str_s
   size_t i, j, leading_ones = 0, leading_zeros = 0, payload_len, decoded_len;
   int carry, v;
   /* Bitcoin Base58Check addresses are usually 26-35 chars; 50 is a safe upper bound. */
-  unsigned char decoded[MAX_B58_DECODED_LEN] = {0}; /* valid decoded address length is 25 bytes */
+  unsigned char decoded[MAX_B58_DECODED_LEN] = {0};
   unsigned char payload[25];
   unsigned char digest[SHA256_DIGEST_LENGTH];
 
@@ -169,7 +170,7 @@ int main(int argc, char **argv) {
   FILE *f, *b;
   size_t line_sz = 1024, line_ct = 0, line_no = 0;
   char *line;
-  char *topt = "ha";
+  char *type_string = "ha";
   input_types_t types = {0};
 
   double err_rate;
@@ -179,7 +180,7 @@ int main(int argc, char **argv) {
   while ((opt = getopt(argc, argv, "t:h")) != -1) {
     switch (opt) {
       case 't':
-        topt = optarg;
+        type_string = optarg;
         break;
       case 'h':
       default:
@@ -188,8 +189,8 @@ int main(int argc, char **argv) {
     }
   }
 
-  for (idx = 0; topt[idx]; ++idx) {
-    switch (topt[idx]) {
+  for (idx = 0; type_string[idx]; ++idx) {
+    switch (type_string[idx]) {
       case 'h':
         if (types.hash160_hex) { fprintf(stderr, "[!] Duplicate type 'h'\n"); exit(1); }
         types.hash160_hex = 1;
@@ -207,7 +208,7 @@ int main(int argc, char **argv) {
         types.upub_hex = 1;
         break;
       default:
-        fprintf(stderr, "[!] Unknown input type '%c'\n", topt[idx]);
+        fprintf(stderr, "[!] Unknown input type '%c'\n", type_string[idx]);
         usage(argv[0]);
         exit(1);
     }
@@ -224,7 +225,7 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  hashfile = (unsigned char *)argv[optind + 0];
+  hashfile = (unsigned char *)argv[optind];
   bloomfile = (unsigned char *)argv[optind + 1];
   format_enabled_types(&types, enabled_types, sizeof(enabled_types));
 
