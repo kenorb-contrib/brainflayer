@@ -26,6 +26,7 @@ const double m_bits   = 4294967296*2;
 static const size_t hash160_hex_len = 40;
 static const size_t cpub_hex_len = 66;
 static const size_t upub_hex_len = 130;
+static const size_t max_b58_address_len = 50;
 /* Intermediate buffer for Base58 decoding math; final payload must still decode to 25 bytes. */
 #define MAX_B58_DECODED_LEN 64
 
@@ -57,7 +58,7 @@ static int parse_hash160_from_base58check(const unsigned char *str, size_t str_s
   unsigned char payload[25];
   unsigned char digest[SHA256_DIGEST_LENGTH];
 
-  if (str_sz == 0 || str_sz > 50) { return 0; }
+  if (str_sz == 0 || str_sz > max_b58_address_len) { return 0; }
 
   for (i = 0; i < str_sz && str[i] == '1'; ++i) { ++leading_ones; }
 
@@ -170,7 +171,7 @@ int main(int argc, char **argv) {
   FILE *f, *b;
   size_t line_sz = 1024, line_ct = 0, line_no = 0;
   char *line;
-  char *type_string = "ha";
+  char *type_string = "ha"; /* default modes: hash160-hex + bitcoin address */
   input_types_t types = {0};
 
   double err_rate;
