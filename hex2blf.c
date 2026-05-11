@@ -24,6 +24,22 @@
 const double k_hashes = 25;
 const double m_bits   = 4294967296*2;
 static const size_t hash160_hex_len = 40;
+static const size_t cpub_hex_len = 66;
+static const size_t upub_hex_len = 130;
+
+typedef struct input_types_s {
+  int hash160_hex;
+  int btc_address;
+  int cpub_hex;
+  int upub_hex;
+} input_types_t;
+
+static void usage(const char *prog) {
+  fprintf(stderr,
+          "[!] Usage: %s [-t TYPES] input.txt bloomfile.blf\n"
+          "    TYPES: h=hash160-hex, a=bitcoin-base58-address, c=compressed-pubkey-hex, u=uncompressed-pubkey-hex\n",
+          prog);
+}
 
 static int b58_value(unsigned char c) {
   static const char *alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -34,7 +50,8 @@ static int b58_value(unsigned char c) {
 static int parse_hash160_from_base58check(const unsigned char *str, size_t str_sz, hash160_t *hash) {
   size_t i, j, leading_ones = 0, leading_zeros = 0, payload_len, decoded_len;
   int carry, v;
-  unsigned char decoded[64] = {0};
+  /* Bitcoin Base58Check addresses are usually 26-35 chars; 50 is a safe upper bound. */
+  unsigned char decoded[64] = {0}; /* comfortably larger than any valid decoded address length (25 bytes) */
   unsigned char payload[25];
   unsigned char digest[SHA256_DIGEST_LENGTH];
 
@@ -72,7 +89,31 @@ static int parse_hash160_from_base58check(const unsigned char *str, size_t str_s
   return 1;
 }
 
-static int parse_hash160_line(char *line, hash160_t *hash) {
+static int parse_hash160_from_pubkey_hex(const unsigned char *str, size_t str_sz, hash160_t *hash, int compressed) {
+  size_t i;
+  unsigned char pub[65];
+  unsigned char digest[SHA256_DIGEST_LENGTH];
+  const size_t expect = compressed ? cpub_hex_len : upub_hex_len;
+  const size_t pub_sz = compressed ? 33 : 65;
+
+  if (str_sz != expect) { return 0; }
+  for (i = 0; i < str_sz; ++i) {
+    if (!isxdigit(str[i])) { return 0; }
+  }
+
+  unhex((unsigned char *)str, str_sz, pub, pub_sz);
+  if (compressed) {
+    if (pub[0] != 0x02 && pub[0] != 0x03) { return 0; }
+  } else if (pub[0] != 0x04) {
+    return 0;
+  }
+
+  SHA256(pub, pub_sz, digest);
+  RIPEMD160(digest, SHA256_DIGEST_LENGTH, hash->uc);
+  return 1;
+}
+
+static int parse_hash160_line(char *line, hash160_t *hash, input_types_t *types) {
   size_t i, line_sz;
   unsigned char *p;
 
@@ -83,7 +124,7 @@ static int parse_hash160_line(char *line, hash160_t *hash) {
   while (line_sz > 0 && isspace(p[line_sz - 1])) { --line_sz; }
   if (line_sz == 0) { return 0; }
 
-  if (line_sz >= hash160_hex_len) {
+  if (types->hash160_hex && line_sz == hash160_hex_len) {
     for (i = 0; i < hash160_hex_len; ++i) {
       if (!isxdigit(p[i])) { break; }
     }
@@ -93,29 +134,87 @@ static int parse_hash160_line(char *line, hash160_t *hash) {
     }
   }
 
-  return parse_hash160_from_base58check(p, line_sz, hash);
+  if (types->btc_address && parse_hash160_from_base58check(p, line_sz, hash)) {
+    return 1;
+  }
+
+  if (types->cpub_hex && parse_hash160_from_pubkey_hex(p, line_sz, hash, 1)) {
+    return 1;
+  }
+
+  if (types->upub_hex && parse_hash160_from_pubkey_hex(p, line_sz, hash, 0)) {
+    return 1;
+  }
+
+  return 0;
 }
 
 int main(int argc, char **argv) {
   hash160_t hash;
   int i;
+  int opt, idx;
   double pct;
   struct stat sb;
   unsigned char *bloom, *hashfile, *bloomfile;
   FILE *f, *b;
-  size_t line_sz = 1024, line_ct = 0;
+  size_t line_sz = 1024, line_ct = 0, line_no = 0;
   char *line;
+  char *topt = "ha";
+  input_types_t types = {0};
 
   double err_rate;
   int parsed;
 
-  if (argc != 3) {
-    fprintf(stderr, "[!] Usage: %s hashfile_or_addresses.txt bloomfile.blf\n", argv[0]);
+  while ((opt = getopt(argc, argv, "t:h")) != -1) {
+    switch (opt) {
+      case 't':
+        topt = optarg;
+        break;
+      case 'h':
+      default:
+        usage(argv[0]);
+        exit(1);
+    }
+  }
+
+  for (idx = 0; topt[idx]; ++idx) {
+    switch (topt[idx]) {
+      case 'h':
+        if (types.hash160_hex) { fprintf(stderr, "[!] Duplicate type 'h'\n"); exit(1); }
+        types.hash160_hex = 1;
+        break;
+      case 'a':
+        if (types.btc_address) { fprintf(stderr, "[!] Duplicate type 'a'\n"); exit(1); }
+        types.btc_address = 1;
+        break;
+      case 'c':
+        if (types.cpub_hex) { fprintf(stderr, "[!] Duplicate type 'c'\n"); exit(1); }
+        types.cpub_hex = 1;
+        break;
+      case 'u':
+        if (types.upub_hex) { fprintf(stderr, "[!] Duplicate type 'u'\n"); exit(1); }
+        types.upub_hex = 1;
+        break;
+      default:
+        fprintf(stderr, "[!] Unknown input type '%c'\n", topt[idx]);
+        usage(argv[0]);
+        exit(1);
+    }
+  }
+
+  if (!types.hash160_hex && !types.btc_address && !types.cpub_hex && !types.upub_hex) {
+    fprintf(stderr, "[!] No input types enabled.\n");
+    usage(argv[0]);
     exit(1);
   }
 
-  hashfile = argv[1];
-  bloomfile = argv[2];
+  if (argc - optind != 2) {
+    usage(argv[0]);
+    exit(1);
+  }
+
+  hashfile = (unsigned char *)argv[optind + 0];
+  bloomfile = (unsigned char *)argv[optind + 1];
 
   if ((f = fopen(hashfile, "r")) == NULL) {
     fprintf(stderr, "[!] Failed to open hash160 file '%s'\n", hashfile);
@@ -161,8 +260,12 @@ int main(int argc, char **argv) {
   stat(hashfile, &sb);
   fprintf(stderr, "[*] Loading hash160s/addresses from '%s' \033[s  0.0%%", hashfile);
   while (getline(&line, &line_sz, f) > 0) {
-    parsed = parse_hash160_line(line, &hash);
-    if (!parsed) { continue; }
+    ++line_no;
+    parsed = parse_hash160_line(line, &hash, &types);
+    if (!parsed) {
+      fprintf(stderr, "[!] Skipping invalid input at line %zu\n", line_no);
+      continue;
+    }
     ++line_ct;
     bloom_set_hash160(bloom, hash.ul);
 

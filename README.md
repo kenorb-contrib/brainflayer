@@ -64,8 +64,20 @@ Precompute the bloom filter:
 
 `hex2blf example.hex example.blf`
 
-`hex2blf` accepts either hash160 values in hex (legacy behavior) or Bitcoin
-Base58Check addresses (for direct work with address lists).
+`hex2blf` accepts input types selected via `-t`:
+
+* `h` — hash160 in hex (40 chars)
+* `a` — Bitcoin Base58Check addresses
+* `c` — compressed public key in hex (33 bytes / 66 chars, prefix `02`/`03`)
+* `u` — uncompressed public key in hex (65 bytes / 130 chars, prefix `04`)
+
+Examples:
+
+* `hex2blf -t h example.hex example.blf`
+* `hex2blf -t a addresses.txt example.blf`
+* `hex2blf -t cu pubkeys.txt example.blf`
+
+Default mode is `-t ha`.
 
 Run Brainflayer against it:
 

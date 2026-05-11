@@ -13,6 +13,9 @@ COMPILE = gcc $(CFLAGS)
 
 all: $(BINARIES)
 
+test: hex2blf blfchk
+	./tests/test_hex2blf_input_types.sh
+
 .git:
 	@echo 'This does not look like a cloned git repo. Unable to fetch submodules.'
 	@false
