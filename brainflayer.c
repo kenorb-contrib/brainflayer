@@ -251,8 +251,11 @@ static size_t kdfsalt_sz;
 
 static int parse_secret_exponent(unsigned char *priv, unsigned char *input, size_t input_sz) {
   size_t i;
+  size_t hex_sz;
+  size_t out_sz;
+  unsigned char hexed[64];
 
-  if (input_sz != 64) {
+  if (input_sz < 1 || input_sz > 64) {
     return 0;
   }
 
@@ -262,7 +265,19 @@ static int parse_secret_exponent(unsigned char *priv, unsigned char *input, size
     }
   }
 
-  unhex(input, input_sz, priv, 32);
+  memset(priv, 0, 32);
+
+  if (input_sz & 1) {
+    hexed[0] = '0';
+    memcpy(hexed + 1, input, input_sz);
+    hex_sz = input_sz + 1;
+  } else {
+    memcpy(hexed, input, input_sz);
+    hex_sz = input_sz;
+  }
+
+  out_sz = hex_sz / 2;
+  unhex(hexed, hex_sz, priv + (32 - out_sz), out_sz);
   return 1;
 }
 
@@ -858,12 +873,12 @@ int main(int argc, char **argv) {
         int matched = 0;
 
         attempt_upub[0] = batch_upub[i];
-        attempt_type[0] = dual_sha256_mode ? "passphrase" : modestr;
+        attempt_type[0] = dual_sha256_mode ? (unsigned char *)"passphrase" : modestr;
 
         if (dual_sha256_mode && parse_secret_exponent(exponent_priv, batch_line[i], batch_line_read[i])) {
           priv2pub(exponent_upub, exponent_priv);
           attempt_upub[1] = exponent_upub;
-          attempt_type[1] = "exponent";
+          attempt_type[1] = (unsigned char *)"exponent";
           attempt_count = 2;
         }
 

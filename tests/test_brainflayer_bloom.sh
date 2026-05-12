@@ -96,4 +96,10 @@ assert_found_with_type "label-passphrase" "$TMP_DIR/t1.blf" "$PASSWORD" "$HASH_C
 SECRET_EXP_ABC="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 assert_found_with_type "label-exponent" "$TMP_DIR/t1.blf" "$SECRET_EXP_ABC" "$HASH_COMP" "exponent" "c"
 
+# ── Test 8: exponent must support non-64 hex length input ("1") ─────────────
+HASH_PRIV1_COMP="751e76e8199196d454941c45d1b3a323f1433bd6"
+printf '%s\n' "$HASH_PRIV1_COMP" > "$TMP_DIR/t8_hashes.txt"
+./hex2blf -t h "$TMP_DIR/t8_hashes.txt" "$TMP_DIR/t8.blf" >/dev/null 2>&1
+assert_found_with_type "label-exponent-short-hex" "$TMP_DIR/t8.blf" "1" "$HASH_PRIV1_COMP" "exponent" "c"
+
 echo "OK: brainflayer bloom filter tests passed"
