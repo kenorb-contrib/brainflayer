@@ -110,7 +110,6 @@ printf '%s\n%s\n' "$HASH_COMP" "$HASH_UNCOMP" > "$TMP_DIR/t9_both.txt"
 ./hex2blf -t h "$TMP_DIR/t9_both.txt" "$TMP_DIR/t9_both.blf" >/dev/null 2>&1
 
 t9_out="$(printf '%s\n' "$PASSWORD" | ./brainflayer -b "$TMP_DIR/t9_both.blf" 2>/dev/null || true)"
-echo "  [passphrase both] output: $t9_out"
 
 if ! echo "$t9_out" | grep -Fq "$HASH_COMP:c:passphrase:$PASSWORD"; then
   echo "FAIL [passphrase-both/compressed]: compressed not found" >&2
@@ -131,7 +130,6 @@ printf '%s\n%s\n' "$HASH_PRIV1_COMP" "$HASH_PRIV1_UNCOMP" > "$TMP_DIR/t11_both.t
 ./hex2blf -t h "$TMP_DIR/t11_both.txt" "$TMP_DIR/t11_both.blf" >/dev/null 2>&1
 
 t11_out="$(printf '%s\n' "1" | ./brainflayer -b "$TMP_DIR/t11_both.blf" 2>/dev/null || true)"
-echo "  [exponent both] output: $t11_out"
 
 if ! echo "$t11_out" | grep -Fq "$HASH_PRIV1_COMP:c:exponent:1"; then
   echo "FAIL [exponent-both/compressed]: compressed not found" >&2
