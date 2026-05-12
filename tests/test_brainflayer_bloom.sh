@@ -104,4 +104,45 @@ printf '%s\n' "$HASH_PRIV1_COMP" > "$TMP_DIR/t8_hashes.txt"
 ./hex2blf -t h "$TMP_DIR/t8_hashes.txt" "$TMP_DIR/t8.blf" >/dev/null 2>&1
 assert_found_with_type "label-exponent-short-hex" "$TMP_DIR/t8.blf" "1" "$HASH_PRIV1_COMP" "exponent" "c"
 
+# ── Tests 9-10: passphrase finds BOTH compressed AND uncompressed in one run ─
+# Build bloom with both hash160s from "abc" as passphrase
+printf '%s\n%s\n' "$HASH_COMP" "$HASH_UNCOMP" > "$TMP_DIR/t9_both.txt"
+./hex2blf -t h "$TMP_DIR/t9_both.txt" "$TMP_DIR/t9_both.blf" >/dev/null 2>&1
+
+t9_out="$(printf '%s\n' "$PASSWORD" | ./brainflayer -b "$TMP_DIR/t9_both.blf" 2>/dev/null || true)"
+echo "  [passphrase both] output: $t9_out"
+
+if ! echo "$t9_out" | grep -Fq "$HASH_COMP:c:passphrase:$PASSWORD"; then
+  echo "FAIL [passphrase-both/compressed]: compressed not found" >&2
+  echo "  Output: $t9_out" >&2
+  exit 1
+fi
+if ! echo "$t9_out" | grep -Fq "$HASH_UNCOMP:u:passphrase:$PASSWORD"; then
+  echo "FAIL [passphrase-both/uncompressed]: uncompressed not found" >&2
+  echo "  Output: $t9_out" >&2
+  exit 1
+fi
+echo "  PASS [passphrase-both]: compressed and uncompressed both found as passphrase"
+
+# ── Tests 11-12: exponent finds BOTH compressed AND uncompressed in one run ──
+# Private key = 1 (short hex), compressed hash160 and uncompressed hash160
+HASH_PRIV1_UNCOMP="91b24bf9f5288532960ac687abb035127b1d28a5"
+printf '%s\n%s\n' "$HASH_PRIV1_COMP" "$HASH_PRIV1_UNCOMP" > "$TMP_DIR/t11_both.txt"
+./hex2blf -t h "$TMP_DIR/t11_both.txt" "$TMP_DIR/t11_both.blf" >/dev/null 2>&1
+
+t11_out="$(printf '%s\n' "1" | ./brainflayer -b "$TMP_DIR/t11_both.blf" 2>/dev/null || true)"
+echo "  [exponent both] output: $t11_out"
+
+if ! echo "$t11_out" | grep -Fq "$HASH_PRIV1_COMP:c:exponent:1"; then
+  echo "FAIL [exponent-both/compressed]: compressed not found" >&2
+  echo "  Output: $t11_out" >&2
+  exit 1
+fi
+if ! echo "$t11_out" | grep -Fq "$HASH_PRIV1_UNCOMP:u:exponent:1"; then
+  echo "FAIL [exponent-both/uncompressed]: uncompressed not found" >&2
+  echo "  Output: $t11_out" >&2
+  exit 1
+fi
+echo "  PASS [exponent-both]: compressed and uncompressed both found as exponent"
+
 echo "OK: brainflayer bloom filter tests passed"

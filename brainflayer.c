@@ -888,8 +888,9 @@ int main(int argc, char **argv) {
         }
 
         for (int attempt = 0; attempt < attempt_count && !matched; ++attempt) {
-          // loop over pubkey hash functions
-          for (j = 0; pubhashfn[j].fn != NULL && !matched; ++j) {
+          // loop over all pubkey hash functions (u, c, e, x)
+          // matched only blocks moving to the next attempt, not the next pubhashfn
+          for (j = 0; pubhashfn[j].fn != NULL; ++j) {
             pubhashfn[j].fn(&hash160, attempt_upub[attempt]);
 
             for (int k = 0; k < boptn; k++) {
