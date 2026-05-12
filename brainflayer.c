@@ -871,11 +871,16 @@ int main(int argc, char **argv) {
         unsigned char *attempt_type[2];
         int attempt_count = 1;
         int matched = 0;
+        int is_valid_exponent = 0;
 
         attempt_upub[0] = batch_upub[i];
         attempt_type[0] = dual_sha256_mode ? (unsigned char *)"passphrase" : modestr;
 
-        if (dual_sha256_mode && parse_secret_exponent(exponent_priv, batch_line[i], batch_line_read[i])) {
+        if (dual_sha256_mode) {
+          is_valid_exponent = parse_secret_exponent(exponent_priv, batch_line[i], batch_line_read[i]);
+        }
+
+        if (is_valid_exponent) {
           priv2pub(exponent_upub, exponent_priv);
           attempt_upub[1] = exponent_upub;
           attempt_type[1] = (unsigned char *)"exponent";

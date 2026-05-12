@@ -55,10 +55,12 @@ assert_found_with_type() {
   local expected_hash="$4"
   local expected_type="$5"
   local expected_comp="$6"
+  local expected_line
 
   local out
   out="$(printf '%s\n' "$pass" | ./brainflayer -c "$expected_comp" -b "$bloom" 2>/dev/null || true)"
-  if ! echo "$out" | grep -qx "^$expected_hash:$expected_comp:$expected_type:$pass$"; then
+  expected_line="$expected_hash:$expected_comp:$expected_type:$pass"
+  if ! echo "$out" | grep -Fxq -- "$expected_line"; then
     echo "FAIL [$name]: expected '$expected_hash:$expected_comp:$expected_type:$pass'" >&2
     echo "  Output: $out" >&2
     exit 1
