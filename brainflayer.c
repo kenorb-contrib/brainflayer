@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <signal.h>
 #include <stdio.h>
 #include <fcntl.h>
@@ -248,6 +249,23 @@ static int rawpriv2priv(unsigned char *priv, unsigned char *rawpriv, size_t rawp
 static unsigned char *kdfsalt;
 static size_t kdfsalt_sz;
 
+static int parse_secret_exponent(unsigned char *priv, unsigned char *input, size_t input_sz) {
+  size_t i;
+
+  if (input_sz != 64) {
+    return 0;
+  }
+
+  for (i = 0; i < input_sz; ++i) {
+    if (!isxdigit(input[i])) {
+      return 0;
+    }
+  }
+
+  unhex(input, input_sz, priv, 32);
+  return 1;
+}
+
 static int warppass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   int ret;
   if ((ret = warpwallet(pass, pass_sz, kdfsalt, kdfsalt_sz, priv)) != 0) return ret;
@@ -421,6 +439,7 @@ int main(int argc, char **argv) {
 
   int spok = 0, aopt = 0, boptn = 0, vopt = 0, wopt = 19, xopt = 0;
   int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Copt = 0, Nopt = 2;
+  int dual_sha256_mode = 0;
   uint64_t kopt = 0;
   unsigned char *bopts[BOPT_MAX];
   unsigned char *iopt = NULL, *oopt = NULL;
@@ -625,6 +644,9 @@ int main(int argc, char **argv) {
 
   if (strcmp(topt, "sha256") == 0) {
     input2priv = &pass2priv;
+    if (!xopt) {
+      dual_sha256_mode = 1;
+    }
   } else if (strcmp(topt, "priv") == 0) {
     if (!xopt) {
       bail(1, "raw private key input requires -x");
@@ -828,49 +850,68 @@ int main(int argc, char **argv) {
     // loop over the public keys
     for (i = 0; i < batch_stopped; ++i) {
       if (boptn > 0) { /* crack mode */
-        // loop over pubkey hash functions
-        for (j = 0; pubhashfn[j].fn != NULL; ++j) {
-          pubhashfn[j].fn(&hash160, batch_upub[i]);
+        unsigned char exponent_priv[32];
+        unsigned char exponent_upub[65];
+        unsigned char *attempt_upub[2];
+        unsigned char *attempt_type[2];
+        int attempt_count = 1;
+        int matched = 0;
 
-          for (int k = 0; k < boptn; k++) {
-            unsigned int bit;
-            bloom = blooms[k];
-            bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH20(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH21(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH22(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH23(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH24(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+        attempt_upub[0] = batch_upub[i];
+        attempt_type[0] = dual_sha256_mode ? "passphrase" : modestr;
 
-            if (!fopt || hsearchf(ffile, &hash160)) {
-              if (tty) { fprintf(ofile, "\033[0K"); }
-              // reformat/populate the line if required
-              if (Iopt) {
-                hex(batch_priv[i], 32, batch_line[i], 65);
+        if (dual_sha256_mode && parse_secret_exponent(exponent_priv, batch_line[i], batch_line_read[i])) {
+          priv2pub(exponent_upub, exponent_priv);
+          attempt_upub[1] = exponent_upub;
+          attempt_type[1] = "exponent";
+          attempt_count = 2;
+        }
+
+        for (int attempt = 0; attempt < attempt_count && !matched; ++attempt) {
+          // loop over pubkey hash functions
+          for (j = 0; pubhashfn[j].fn != NULL && !matched; ++j) {
+            pubhashfn[j].fn(&hash160, attempt_upub[attempt]);
+
+            for (int k = 0; k < boptn; k++) {
+              unsigned int bit;
+              bloom = blooms[k];
+              bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH20(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH21(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH22(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH23(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              bit = BH24(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+
+              if (!fopt || hsearchf(ffile, &hash160)) {
+                if (tty) { fprintf(ofile, "\033[0K"); }
+                // reformat/populate the line if required
+                if (Iopt) {
+                  hex(batch_priv[i], 32, batch_line[i], 65);
+                }
+                fprintresult(ofile, &hash160, pubhashfn[j].id, attempt_type[attempt], batch_line[i]);
+                ++olines;
+                matched = 1;
+                break;
               }
-              fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
-              ++olines;
-              k = boptn; // End a for loop.
-              break;
             }
           }
         }
