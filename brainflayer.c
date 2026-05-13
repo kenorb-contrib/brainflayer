@@ -39,6 +39,12 @@
 // Number of supported bloom files.
 #define BOPT_MAX 10
 
+#define FOUND_INPUT_SET_INITIAL_BUCKET_COUNT 1024
+#define FOUND_INPUT_SET_MAX_LOAD_NUMERATOR 3
+#define FOUND_INPUT_SET_MAX_LOAD_DENOMINATOR 4
+#define FNV1A_OFFSET_BASIS_64 1469598103934665603ULL
+#define FNV1A_PRIME_64 1099511628211ULL
+
 static int brainflayer_is_init = 0;
 
 typedef struct pubhashfn_s {
@@ -57,9 +63,6 @@ typedef struct found_input_set_s {
   size_t bucket_count;
   size_t count;
 } found_input_set_t;
-
-#define FOUND_INPUT_SET_MAX_LOAD_NUMERATOR 3
-#define FOUND_INPUT_SET_MAX_LOAD_DENOMINATOR 4
 
 static unsigned char *mem;
 
@@ -115,11 +118,11 @@ static inline void brainflayer_init_globals() {
 }
 
 static size_t hash_input_bytes(const unsigned char *input, size_t input_sz) {
-  size_t hash = 1469598103934665603ULL;
+  size_t hash = FNV1A_OFFSET_BASIS_64;
 
   for (size_t i = 0; i < input_sz; ++i) {
     hash ^= input[i];
-    hash *= 1099511628211ULL;
+    hash *= FNV1A_PRIME_64;
   }
 
   return hash;
@@ -179,7 +182,7 @@ static void found_input_set_add(found_input_set_t *set, const unsigned char *inp
   found_input_entry_t *entry;
 
   if (set->bucket_count == 0) {
-    found_input_set_init(set, 1024);
+    found_input_set_init(set, FOUND_INPUT_SET_INITIAL_BUCKET_COUNT);
   } else if (set->count * FOUND_INPUT_SET_MAX_LOAD_DENOMINATOR >=
              set->bucket_count * FOUND_INPUT_SET_MAX_LOAD_NUMERATOR) {
     found_input_set_grow(set);
