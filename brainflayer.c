@@ -58,6 +58,9 @@ typedef struct found_input_set_s {
   size_t count;
 } found_input_set_t;
 
+#define FOUND_INPUT_SET_MAX_LOAD_NUMERATOR 3
+#define FOUND_INPUT_SET_MAX_LOAD_DENOMINATOR 4
+
 static unsigned char *mem;
 
 static mmapf_ctx bloom_mmapf[10];
@@ -111,7 +114,7 @@ static inline void brainflayer_init_globals() {
   }
 }
 
-static size_t found_input_hash(const unsigned char *input, size_t input_sz) {
+static size_t hash_input_bytes(const unsigned char *input, size_t input_sz) {
   size_t hash = 1469598103934665603ULL;
 
   for (size_t i = 0; i < input_sz; ++i) {
@@ -137,7 +140,7 @@ static int found_input_set_contains(const found_input_set_t *set, const unsigned
     return 0;
   }
 
-  bucket_idx = found_input_hash(input, input_sz) % set->bucket_count;
+  bucket_idx = hash_input_bytes(input, input_sz) % set->bucket_count;
   entry = set->buckets[bucket_idx];
 
   while (entry != NULL) {
@@ -160,7 +163,7 @@ static void found_input_set_grow(found_input_set_t *set) {
     found_input_entry_t *entry = old_buckets[i];
     while (entry != NULL) {
       found_input_entry_t *next = entry->next;
-      size_t bucket_idx = found_input_hash(entry->input, entry->input_sz) % set->bucket_count;
+      size_t bucket_idx = hash_input_bytes(entry->input, entry->input_sz) % set->bucket_count;
       entry->next = set->buckets[bucket_idx];
       set->buckets[bucket_idx] = entry;
       ++set->count;
@@ -177,11 +180,12 @@ static void found_input_set_add(found_input_set_t *set, const unsigned char *inp
 
   if (set->bucket_count == 0) {
     found_input_set_init(set, 1024);
-  } else if (set->count * 4 >= set->bucket_count * 3) {
+  } else if (set->count * FOUND_INPUT_SET_MAX_LOAD_DENOMINATOR >=
+             set->bucket_count * FOUND_INPUT_SET_MAX_LOAD_NUMERATOR) {
     found_input_set_grow(set);
   }
 
-  bucket_idx = found_input_hash(input, input_sz) % set->bucket_count;
+  bucket_idx = hash_input_bytes(input, input_sz) % set->bucket_count;
   entry = chkmalloc(sizeof(*entry));
   entry->input = chkmalloc(input_sz + 1);
   memcpy(entry->input, input, input_sz);
@@ -548,6 +552,7 @@ int main(int argc, char **argv) {
   int spok = 0, aopt = 0, boptn = 0, vopt = 0, wopt = 19, xopt = 0;
   int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Copt = 0, Nopt = 2;
   int dual_sha256_mode = 0;
+  int dedupe_found_inputs = 1;
   uint64_t kopt = 0;
   unsigned char *bopts[BOPT_MAX];
   unsigned char *iopt = NULL, *oopt = NULL;
@@ -718,6 +723,10 @@ int main(int argc, char **argv) {
     unhex(Iopt, sizeof(priv)*2, priv, sizeof(priv));
     skipping = 1;
     if (!nopt_mod) { nopt_mod = 1; };
+  }
+
+  if (Iopt) {
+    dedupe_found_inputs = 0;
   }
 
 
@@ -959,7 +968,8 @@ int main(int argc, char **argv) {
     // loop over the public keys
     for (i = 0; i < batch_stopped; ++i) {
       if (boptn > 0) { /* crack mode */
-        if (!Iopt && found_input_set_contains(&found_inputs, batch_line[i], batch_line_read[i])) {
+        if (dedupe_found_inputs &&
+            found_input_set_contains(&found_inputs, batch_line[i], batch_line_read[i])) {
           continue;
         }
 
@@ -1026,7 +1036,7 @@ int main(int argc, char **argv) {
                 if (Iopt) {
                   hex(batch_priv[i], 32, batch_line[i], 65);
                 }
-                if (!Iopt && !matched) {
+                if (dedupe_found_inputs && !matched) {
                   found_input_set_add(&found_inputs, batch_line[i], batch_line_read[i]);
                 }
                 fprintresult(ofile, &hash160, pubhashfn[j].id, attempt_type[attempt], batch_line[i]);
