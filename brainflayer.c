@@ -46,6 +46,18 @@ typedef struct pubhashfn_s {
    char id;
 } pubhashfn_t;
 
+typedef struct found_input_entry_s {
+  unsigned char *input;
+  size_t input_sz;
+  struct found_input_entry_s *next;
+} found_input_entry_t;
+
+typedef struct found_input_set_s {
+  found_input_entry_t **buckets;
+  size_t bucket_count;
+  size_t count;
+} found_input_set_t;
+
 static unsigned char *mem;
 
 static mmapf_ctx bloom_mmapf[10];
@@ -97,6 +109,87 @@ static inline void brainflayer_init_globals() {
     /* set the flag */
     brainflayer_is_init = 1;
   }
+}
+
+static size_t found_input_hash(const unsigned char *input, size_t input_sz) {
+  size_t hash = 1469598103934665603ULL;
+
+  for (size_t i = 0; i < input_sz; ++i) {
+    hash ^= input[i];
+    hash *= 1099511628211ULL;
+  }
+
+  return hash;
+}
+
+static void found_input_set_init(found_input_set_t *set, size_t bucket_count) {
+  set->bucket_count = bucket_count;
+  set->count = 0;
+  set->buckets = chkmalloc(bucket_count * sizeof(*set->buckets));
+  memset(set->buckets, 0, bucket_count * sizeof(*set->buckets));
+}
+
+static int found_input_set_contains(const found_input_set_t *set, const unsigned char *input, size_t input_sz) {
+  size_t bucket_idx;
+  found_input_entry_t *entry;
+
+  if (set->bucket_count == 0) {
+    return 0;
+  }
+
+  bucket_idx = found_input_hash(input, input_sz) % set->bucket_count;
+  entry = set->buckets[bucket_idx];
+
+  while (entry != NULL) {
+    if (entry->input_sz == input_sz && memcmp(entry->input, input, input_sz) == 0) {
+      return 1;
+    }
+    entry = entry->next;
+  }
+
+  return 0;
+}
+
+static void found_input_set_grow(found_input_set_t *set) {
+  size_t old_bucket_count = set->bucket_count;
+  found_input_entry_t **old_buckets = set->buckets;
+
+  found_input_set_init(set, old_bucket_count * 2);
+
+  for (size_t i = 0; i < old_bucket_count; ++i) {
+    found_input_entry_t *entry = old_buckets[i];
+    while (entry != NULL) {
+      found_input_entry_t *next = entry->next;
+      size_t bucket_idx = found_input_hash(entry->input, entry->input_sz) % set->bucket_count;
+      entry->next = set->buckets[bucket_idx];
+      set->buckets[bucket_idx] = entry;
+      ++set->count;
+      entry = next;
+    }
+  }
+
+  free(old_buckets);
+}
+
+static void found_input_set_add(found_input_set_t *set, const unsigned char *input, size_t input_sz) {
+  size_t bucket_idx;
+  found_input_entry_t *entry;
+
+  if (set->bucket_count == 0) {
+    found_input_set_init(set, 1024);
+  } else if (set->count * 4 >= set->bucket_count * 3) {
+    found_input_set_grow(set);
+  }
+
+  bucket_idx = found_input_hash(input, input_sz) % set->bucket_count;
+  entry = chkmalloc(sizeof(*entry));
+  entry->input = chkmalloc(input_sz + 1);
+  memcpy(entry->input, input, input_sz);
+  entry->input[input_sz] = 0;
+  entry->input_sz = input_sz;
+  entry->next = set->buckets[bucket_idx];
+  set->buckets[bucket_idx] = entry;
+  ++set->count;
 }
 
 // function pointers
@@ -464,6 +557,7 @@ int main(int argc, char **argv) {
 
   unsigned char priv[64];
   hash160_t hash160;
+  found_input_set_t found_inputs = {0};
   pubhashfn_t pubhashfn[8];
   memset(pubhashfn, 0, sizeof(pubhashfn));
 
@@ -865,6 +959,10 @@ int main(int argc, char **argv) {
     // loop over the public keys
     for (i = 0; i < batch_stopped; ++i) {
       if (boptn > 0) { /* crack mode */
+        if (!Iopt && found_input_set_contains(&found_inputs, batch_line[i], batch_line_read[i])) {
+          continue;
+        }
+
         unsigned char exponent_priv[32];
         unsigned char exponent_upub[65];
         unsigned char *attempt_upub[2];
@@ -927,6 +1025,9 @@ int main(int argc, char **argv) {
                 // reformat/populate the line if required
                 if (Iopt) {
                   hex(batch_priv[i], 32, batch_line[i], 65);
+                }
+                if (!Iopt && !matched) {
+                  found_input_set_add(&found_inputs, batch_line[i], batch_line_read[i]);
                 }
                 fprintresult(ofile, &hash160, pubhashfn[j].id, attempt_type[attempt], batch_line[i]);
                 ++olines;

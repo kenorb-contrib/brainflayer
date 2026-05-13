@@ -67,6 +67,33 @@ assert_found_with_type() {
   fi
 }
 
+assert_found_once_with_stats() {
+  local name="$1"
+  local bloom="$2"
+  local pass="$3"
+  local expected_line="$4"
+  local out_file="$TMP_DIR/${name}.out"
+  local err_file="$TMP_DIR/${name}.err"
+
+  printf '%s\n%s\n' "$pass" "$pass" | ./brainflayer -v -c c -b "$bloom" >"$out_file" 2>"$err_file"
+
+  if [ "$(grep -Fxc -- "$expected_line" "$out_file")" -ne 1 ]; then
+    echo "FAIL [$name]: expected exactly one saved match '$expected_line'" >&2
+    echo "  Output: $(cat "$out_file")" >&2
+    exit 1
+  fi
+  if [ "$(wc -l < "$out_file")" -ne 1 ]; then
+    echo "FAIL [$name]: duplicate match was written to output" >&2
+    echo "  Output: $(cat "$out_file")" >&2
+    exit 1
+  fi
+  if ! grep -Eq "found:[[:space:]]*1/2" "$err_file"; then
+    echo "FAIL [$name]: verbose stats did not keep found counter at 1/2" >&2
+    echo "  Stderr: $(cat "$err_file")" >&2
+    exit 1
+  fi
+}
+
 # ── Test 1: bloom built from hash160 (hex2blf -t h), compressed ────────────
 printf '%s\n' "$HASH_COMP" > "$TMP_DIR/t1_hashes.txt"
 ./hex2blf -t h "$TMP_DIR/t1_hashes.txt" "$TMP_DIR/t1.blf" >/dev/null 2>&1
@@ -142,5 +169,12 @@ if ! echo "$t11_out" | grep -Fq "$HASH_PRIV1_UNCOMP:u:exponent:1"; then
   exit 1
 fi
 echo "  PASS [exponent-both]: compressed and uncompressed both found as exponent"
+
+# ── Test 13: repeated found input must not be written or counted twice ────────
+assert_found_once_with_stats \
+  "dedupe-repeated-found-input" \
+  "$TMP_DIR/t1.blf" \
+  "$PASSWORD" \
+  "$HASH_COMP:c:passphrase:$PASSWORD"
 
 echo "OK: brainflayer bloom filter tests passed"
