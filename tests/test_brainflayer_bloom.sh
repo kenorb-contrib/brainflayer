@@ -82,7 +82,7 @@ assert_found_once_with_stats() {
     echo "  Output: $(cat "$out_file")" >&2
     exit 1
   fi
-  if [ "$(wc -l < "$out_file")" -ne 1 ]; then
+  if [ "$(grep -Ec '^[0-9a-f]{40}:' "$out_file")" -ne 1 ]; then
     echo "FAIL [$name]: duplicate match was written to output" >&2
     echo "  Output: $(cat "$out_file")" >&2
     exit 1
