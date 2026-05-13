@@ -1056,8 +1056,13 @@ int main(int argc, char **argv) {
                 unsigned char chained_input[41];
                 unsigned char chained_priv[32];
                 unsigned char chained_upub[65];
+                unsigned char chained_exponent_priv[32];
+                unsigned char chained_exponent_upub[65];
+                unsigned char *chained_attempt_upub[2];
+                unsigned char *chained_attempt_type[2];
                 size_t chained_input_sz = 0;
                 int chained_seen = 0;
+                int chained_attempt_count = 1;
 
                 if (tty) { fprintf(ofile, "\033[0K"); }
                 // reformat/populate the line if required
@@ -1079,26 +1084,37 @@ int main(int argc, char **argv) {
                     !found_input_set_contains(&found_inputs, chained_input, chained_input_sz)) {
                   pass2priv(chained_priv, chained_input, chained_input_sz);
                   priv2pub(chained_upub, chained_priv);
+                  chained_attempt_upub[0] = chained_upub;
+                  chained_attempt_type[0] = (unsigned char *)"passphrase";
 
-                  for (int chained_j = 0; pubhashfn[chained_j].fn != NULL; ++chained_j) {
-                    hash160_t chained_hash160;
+                  if (parse_secret_exponent(chained_exponent_priv, chained_input, chained_input_sz)) {
+                    priv2pub(chained_exponent_upub, chained_exponent_priv);
+                    chained_attempt_upub[1] = chained_exponent_upub;
+                    chained_attempt_type[1] = (unsigned char *)"exponent";
+                    chained_attempt_count = 2;
+                  }
 
-                    pubhashfn[chained_j].fn(&chained_hash160, chained_upub);
+                  for (int chained_attempt = 0; chained_attempt < chained_attempt_count; ++chained_attempt) {
+                    for (int chained_j = 0; pubhashfn[chained_j].fn != NULL; ++chained_j) {
+                      hash160_t chained_hash160;
 
-                    for (int chained_k = 0; chained_k < boptn; ++chained_k) {
-                      bloom = blooms[chained_k];
-                      if (!bloom_chk_hash160(bloom, chained_hash160.ul)) { continue; }
+                      pubhashfn[chained_j].fn(&chained_hash160, chained_attempt_upub[chained_attempt]);
 
-                      if (!fopt || hsearchf(ffile, &chained_hash160)) {
-                        if (tty) { fprintf(ofile, "\033[0K"); }
-                        if (dedupe_found_inputs && !chained_seen) {
-                          found_input_set_add(&found_inputs, chained_input, chained_input_sz);
-                          chained_seen = 1;
+                      for (int chained_k = 0; chained_k < boptn; ++chained_k) {
+                        bloom = blooms[chained_k];
+                        if (!bloom_chk_hash160(bloom, chained_hash160.ul)) { continue; }
+
+                        if (!fopt || hsearchf(ffile, &chained_hash160)) {
+                          if (tty) { fprintf(ofile, "\033[0K"); }
+                          if (dedupe_found_inputs && !chained_seen) {
+                            found_input_set_add(&found_inputs, chained_input, chained_input_sz);
+                            chained_seen = 1;
+                          }
+                          fprintresult(ofile, &chained_hash160, pubhashfn[chained_j].id,
+                                       chained_attempt_type[chained_attempt], chained_input);
+                          ++olines;
+                          break;
                         }
-                        fprintresult(ofile, &chained_hash160, pubhashfn[chained_j].id,
-                                     (unsigned char *)"passphrase", chained_input);
-                        ++olines;
-                        break;
                       }
                     }
                   }

@@ -223,4 +223,25 @@ if ! echo "$t15_out" | grep -Fq "$CHAIN_HASH_COMP:c:passphrase:$CHAIN_INPUT"; th
 fi
 echo "  PASS [chain-passphrase]: found hash160 checked as passphrase"
 
+# ── Test 16: found hash160 must also be checked as exponent ────────────────────
+CHAIN_INPUT_PADDED="$(printf '%024d%s' 0 "$CHAIN_INPUT")"
+CHAIN_EXP_HASH_COMP="$(printf '%s\n' "$CHAIN_INPUT_PADDED" | ./brainflayer -x -t priv -c c 2>/dev/null | head -n1 | cut -d: -f1)"
+
+printf '%s\n%s\n' "$HASH_COMP" "$CHAIN_EXP_HASH_COMP" > "$TMP_DIR/t16_hashes.txt"
+./hex2blf -t h "$TMP_DIR/t16_hashes.txt" "$TMP_DIR/t16.blf" >/dev/null 2>&1
+
+t16_out="$(printf '%s\n' "$PASSWORD" | ./brainflayer -c c -b "$TMP_DIR/t16.blf" 2>/dev/null || true)"
+
+if ! echo "$t16_out" | grep -Fq "$HASH_COMP:c:passphrase:$PASSWORD"; then
+  echo "FAIL [chain-exponent/original]: original match not found" >&2
+  echo "  Output: $t16_out" >&2
+  exit 1
+fi
+if ! echo "$t16_out" | grep -Fq "$CHAIN_EXP_HASH_COMP:c:exponent:$CHAIN_INPUT"; then
+  echo "FAIL [chain-exponent/chained]: chained exponent match not found" >&2
+  echo "  Output: $t16_out" >&2
+  exit 1
+fi
+echo "  PASS [chain-exponent]: found hash160 checked as exponent"
+
 echo "OK: brainflayer bloom filter tests passed"
