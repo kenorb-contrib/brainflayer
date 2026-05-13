@@ -202,4 +202,25 @@ if [ "$second_count" -ne 1 ]; then
 fi
 echo "  PASS [cross-run]: found.txt not duplicated across runs"
 
+# ── Test 15: found hash160 must also be checked as passphrase ─────────────────
+CHAIN_INPUT="$HASH_COMP"
+CHAIN_HASH_COMP="$(printf '%s\n' "$CHAIN_INPUT" | ./brainflayer -c c 2>/dev/null | head -n1 | cut -d: -f1)"
+
+printf '%s\n%s\n' "$HASH_COMP" "$CHAIN_HASH_COMP" > "$TMP_DIR/t15_hashes.txt"
+./hex2blf -t h "$TMP_DIR/t15_hashes.txt" "$TMP_DIR/t15.blf" >/dev/null 2>&1
+
+t15_out="$(printf '%s\n' "$PASSWORD" | ./brainflayer -c c -b "$TMP_DIR/t15.blf" 2>/dev/null || true)"
+
+if ! echo "$t15_out" | grep -Fq "$HASH_COMP:c:passphrase:$PASSWORD"; then
+  echo "FAIL [chain-passphrase/original]: original match not found" >&2
+  echo "  Output: $t15_out" >&2
+  exit 1
+fi
+if ! echo "$t15_out" | grep -Fq "$CHAIN_HASH_COMP:c:passphrase:$CHAIN_INPUT"; then
+  echo "FAIL [chain-passphrase/chained]: chained passphrase match not found" >&2
+  echo "  Output: $t15_out" >&2
+  exit 1
+fi
+echo "  PASS [chain-passphrase]: found hash160 checked as passphrase"
+
 echo "OK: brainflayer bloom filter tests passed"

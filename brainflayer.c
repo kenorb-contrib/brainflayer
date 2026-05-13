@@ -1049,35 +1049,16 @@ int main(int argc, char **argv) {
             pubhashfn[j].fn(&hash160, attempt_upub[attempt]);
 
             for (int k = 0; k < boptn; k++) {
-              unsigned int bit;
               bloom = blooms[k];
-              bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH20(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH21(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH22(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH23(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-              bit = BH24(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+              if (!bloom_chk_hash160(bloom, hash160.ul)) { continue; }
 
               if (!fopt || hsearchf(ffile, &hash160)) {
+                unsigned char chained_input[41];
+                unsigned char chained_priv[32];
+                unsigned char chained_upub[65];
+                size_t chained_input_sz = 0;
+                int chained_seen = 0;
+
                 if (tty) { fprintf(ofile, "\033[0K"); }
                 // reformat/populate the line if required
                 if (Iopt) {
@@ -1089,6 +1070,39 @@ int main(int argc, char **argv) {
                 fprintresult(ofile, &hash160, pubhashfn[j].id, attempt_type[attempt], batch_line[i]);
                 ++olines;
                 matched = 1;
+
+                /* chain match: take found hash160 hex and test it as a passphrase */
+                hex(hash160.uc, sizeof(hash160.uc), chained_input, sizeof(chained_input));
+                chained_input_sz = strlen((char *)chained_input);
+
+                if (!dedupe_found_inputs ||
+                    !found_input_set_contains(&found_inputs, chained_input, chained_input_sz)) {
+                  pass2priv(chained_priv, chained_input, chained_input_sz);
+                  priv2pub(chained_upub, chained_priv);
+
+                  for (int chained_j = 0; pubhashfn[chained_j].fn != NULL; ++chained_j) {
+                    hash160_t chained_hash160;
+
+                    pubhashfn[chained_j].fn(&chained_hash160, chained_upub);
+
+                    for (int chained_k = 0; chained_k < boptn; ++chained_k) {
+                      bloom = blooms[chained_k];
+                      if (!bloom_chk_hash160(bloom, chained_hash160.ul)) { continue; }
+
+                      if (!fopt || hsearchf(ffile, &chained_hash160)) {
+                        if (tty) { fprintf(ofile, "\033[0K"); }
+                        if (dedupe_found_inputs && !chained_seen) {
+                          found_input_set_add(&found_inputs, chained_input, chained_input_sz);
+                          chained_seen = 1;
+                        }
+                        fprintresult(ofile, &chained_hash160, pubhashfn[chained_j].id,
+                                     (unsigned char *)"passphrase", chained_input);
+                        ++olines;
+                        break;
+                      }
+                    }
+                  }
+                }
                 break;
               }
             }
