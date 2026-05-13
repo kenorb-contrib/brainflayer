@@ -177,4 +177,29 @@ assert_found_once_with_stats \
   "$PASSWORD" \
   "$HASH_COMP:c:passphrase:$PASSWORD"
 
+# ── Test 14: cross-run deduplication – second run appends, no duplicates ──────
+FOUND_FILE="$TMP_DIR/t14_found.txt"
+rm -f "$FOUND_FILE"
+
+# first run: writes one match
+printf '%s\n' "$PASSWORD" | ./brainflayer -c c -b "$TMP_DIR/t1.blf" -o "$FOUND_FILE" 2>/dev/null || true
+
+first_count="$(grep -Ec '^[0-9a-f]{40}:' "$FOUND_FILE" 2>/dev/null || echo 0)"
+if [ "$first_count" -ne 1 ]; then
+  echo "FAIL [cross-run/first-run]: expected 1 match, got $first_count" >&2
+  echo "  File: $(cat "$FOUND_FILE")" >&2
+  exit 1
+fi
+
+# second run with same password: should NOT add another line
+printf '%s\n' "$PASSWORD" | ./brainflayer -c c -b "$TMP_DIR/t1.blf" -o "$FOUND_FILE" 2>/dev/null || true
+
+second_count="$(grep -Ec '^[0-9a-f]{40}:' "$FOUND_FILE" 2>/dev/null || echo 0)"
+if [ "$second_count" -ne 1 ]; then
+  echo "FAIL [cross-run/second-run]: expected still 1 match after second run, got $second_count" >&2
+  echo "  File: $(cat "$FOUND_FILE")" >&2
+  exit 1
+fi
+echo "  PASS [cross-run]: found.txt not duplicated across runs"
+
 echo "OK: brainflayer bloom filter tests passed"

@@ -199,6 +199,44 @@ static void found_input_set_add(found_input_set_t *set, const unsigned char *inp
   ++set->count;
 }
 
+static void load_found_inputs_from_file(found_input_set_t *set, const char *filename) {
+  FILE *f;
+  char *line = NULL;
+  size_t line_sz = 0;
+  ssize_t n;
+
+  f = fopen(filename, "r");
+  if (f == NULL) {
+    return; /* file doesn't exist yet, that's fine */
+  }
+
+  while ((n = getline(&line, &line_sz, f)) > 0) {
+    char *p;
+    int colons = 0;
+
+    /* strip trailing newline/cr */
+    if (n > 0 && line[n - 1] == '\n') { line[--n] = 0; }
+    if (n > 0 && line[n - 1] == '\r') { line[--n] = 0; }
+
+    /* format: hash160:compressed:type:input – skip to 4th field */
+    p = line;
+    while (*p && colons < 3) {
+      if (*p == ':') { ++colons; }
+      ++p;
+    }
+
+    if (colons < 3 || *p == '\0') {
+      continue; /* malformed or empty input field */
+    }
+
+    /* p now points to the input value; load it as a seen entry */
+    found_input_set_add(set, (const unsigned char *)p, strlen(p));
+  }
+
+  free(line);
+  fclose(f);
+}
+
 // function pointers
 static int (*input2priv)(unsigned char *, unsigned char *, size_t);
 
@@ -880,8 +918,14 @@ int main(int argc, char **argv) {
     posix_fadvise(fileno(ifile), 0, 0, POSIX_FADV_SEQUENTIAL);
   }
 
-  if (oopt && (ofile = fopen(oopt, (aopt ? "a" : "w"))) == NULL) {
-    bail(1, "failed to open '%s' for writing: %s\n", oopt, strerror(errno));
+  if (oopt) {
+    /* load previously found inputs so they are not written again */
+    if (dedupe_found_inputs) {
+      load_found_inputs_from_file(&found_inputs, oopt);
+    }
+    if ((ofile = fopen(oopt, "a")) == NULL) {
+      bail(1, "failed to open '%s' for writing: %s\n", oopt, strerror(errno));
+    }
   }
 
   /* line buffer output */
