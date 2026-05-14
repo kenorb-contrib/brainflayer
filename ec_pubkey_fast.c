@@ -5,6 +5,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #include <sys/types.h>
@@ -387,15 +388,55 @@ int secp256k1_ec_pubkey_batch_incr(unsigned int num, unsigned int skip, unsigned
 
 // call secp256k1_ec_pubkey_batch_init first or you get segfaults
 int secp256k1_ec_pubkey_batch_create(unsigned int num, unsigned char (*pub)[65], unsigned char (*sec)[32]) {
-  int i;
+  unsigned int i;
+  int j;
 
-  /* generate jacobian coordinates */
+  /* Initialize all points to infinity */
   for (i = 0; i < num; ++i) {
-#ifdef USE_BL_ARITHMETIC
-    secp256k1_ecmult_gen_bl(&batchpj[i], sec[i]);
-#else
-    secp256k1_ecmult_gen2(&batchpj[i], sec[i]);
-#endif
+    batchpj[i].infinity = 1;
+  }
+
+  /* Window-first ordering: iterate windows in the outer loop and keys in the inner loop.
+   *
+   * With the default (key-first) order every key requires n_windows random lookups spread
+   * across the entire precomputed table. For large window sizes the table far exceeds the
+   * L3 cache, so each lookup incurs a full DRAM latency (~100 ns).
+   *
+   * By inverting the loop order we process all keys for a single window before advancing
+   * to the next window.  The per-window table region is only n_values * sizeof(secp256k1_ge)
+   * bytes (e.g. 720 KB for window=13), which fits in L2 cache.  After the first pass through
+   * the keys for window j, subsequent keys that share the same index re-use the cached cache
+   * lines (expected reuse factor ~num/n_values ≈ 7× for window=13 and batch=57344).
+   * This converts almost all table lookups from DRAM misses to L2/L3 hits.
+   *
+   * The inner loop body is independent across keys for a given window, allowing the CPU
+   * out-of-order engine to pipeline multiple keys simultaneously (throughput-bound rather
+   * than latency-bound), providing additional speedup on top of the cache improvement. */
+  for (j = 0; j < n_windows; j++) {
+    int window_bits = (j == n_windows - 1 && remmining != 0) ? remmining : WINDOW_SIZE;
+    int start_bit   = j * WINDOW_SIZE;
+    const secp256k1_ge *window_table = &prec[j * n_values];
+    unsigned int window_mask = (1u << window_bits) - 1;
+    /* Byte/bit offsets within the 32-byte big-endian key for this window.
+     * Bit p in the LSB-first expansion maps to byte sec[31 - p/8], bit p%8. */
+    int byte_end = 31 - start_bit / 8;   /* index of the least-significant byte for this window */
+    int bit_off  = start_bit % 8;         /* bit shift within that byte */
+
+    for (i = 0; i < num; ++i) {
+      /* Extract window_bits starting at start_bit from the big-endian private key.
+       * A window can span up to ceil((bit_off + window_bits) / 8) bytes; reading
+       * five bytes (40 bits) into a uint64_t covers all valid window sizes (≤ 28)
+       * at all byte alignments (bit_off 0-7).  Boundary guards are loop-invariant
+       * over i and will be hoisted out by the compiler at -O3. */
+      uint64_t raw = (uint64_t)sec[i][byte_end];
+      if (byte_end > 0) raw |= (uint64_t)sec[i][byte_end - 1] << 8;
+      if (byte_end > 1) raw |= (uint64_t)sec[i][byte_end - 2] << 16;
+      if (byte_end > 2) raw |= (uint64_t)sec[i][byte_end - 3] << 24;
+      if (byte_end > 3) raw |= (uint64_t)sec[i][byte_end - 4] << 32;
+      int bits = (int)((raw >> bit_off) & window_mask);
+
+      secp256k1_gej_add_ge_var(&batchpj[i], &batchpj[i], &window_table[bits], NULL);
+    }
   }
 
   /* convert all jacobian coordinates to affine */
