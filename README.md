@@ -199,6 +199,19 @@ building for other platforms probably won’t be fixed. In particular, Kali Linu
 is *not* supported. Support for operating systems other than Linux would require
 extensive refactoring of Brainflayer's memory optimizations and is not happening.
 
+For maximum throughput on the machine doing the build, the default `make`
+configuration now enables CPU-local tuning flags (`-march=native -mtune=native`)
+and passes the same tuning into the bundled secp256k1 and scrypt-jane builds.
+If you need a more portable binary, override it explicitly:
+
+```
+make ARCH_CFLAGS=
+```
+
+To chase higher aggregate rates such as tens of millions of passphrases per
+second, use multiple brainflayer processes in parallel with `-n K/N` so each
+core works on its own shard of the input.
+
 Redistribution of compiled `brainflayer` binaries is prohibited, and
 unauthorized binaries probably contain malware.
 

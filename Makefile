@@ -5,8 +5,10 @@ OBJ_ALGO = $(patsubst %.c,%.o,$(wildcard algo/*.c))
 OBJECTS = $(OBJ_MAIN) $(OBJ_UTIL) $(OBJ_ALGO)
 BINARIES = brainflayer hexln hex2blf blfchk ecmtabgen filehex
 LIBS = -lssl -lrt -lcrypto -lz -lgmp -lpthread
+ARCH_CFLAGS ?= -march=native -mtune=native
 CFLAGS = -O3 \
-         -flto -funsigned-char -falign-functions=16 -falign-loops=16 -falign-jumps=16 \
+         -flto -fomit-frame-pointer -funsigned-char -falign-functions=16 -falign-loops=16 -falign-jumps=16 \
+         $(ARCH_CFLAGS) \
          -Wall -Wextra -Wno-pointer-sign -Wno-sign-compare \
          -pedantic -std=gnu99
 COMPILE = gcc $(CFLAGS)
@@ -26,7 +28,7 @@ secp256k1/.libs/libsecp256k1.a: .git
 	git submodule update
 	cd secp256k1; make distclean || true
 	cd secp256k1; ./autogen.sh
-	cd secp256k1; ./configure
+	cd secp256k1; ./configure --with-asm=auto CFLAGS="$(ARCH_CFLAGS) -O3"
 	cd secp256k1; make
 
 secp256k1/include/secp256k1.h: secp256k1/.libs/libsecp256k1.a
@@ -36,7 +38,7 @@ scrypt-jane/scrypt-jane.h: .git
 	git submodule update
 
 scrypt-jane/scrypt-jane.o: scrypt-jane/scrypt-jane.h scrypt-jane/scrypt-jane.c
-	cd scrypt-jane; gcc -O3 -DSCRYPT_SALSA -DSCRYPT_SHA256 -c scrypt-jane.c -o scrypt-jane.o
+	cd scrypt-jane; gcc $(ARCH_CFLAGS) -O3 -DSCRYPT_SALSA -DSCRYPT_SHA256 -c scrypt-jane.c -o scrypt-jane.o
 
 brainflayer.o: brainflayer.c secp256k1/include/secp256k1.h
 
