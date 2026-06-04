@@ -1,9 +1,9 @@
 HEADERS = bloom.h crack.h hash160.h warpwallet.h
-OBJ_MAIN = brainflayer.o hex2blf.o blfchk.o ecmtabgen.o hexln.o filehex.o
+OBJ_MAIN = brainflayer.o hex2blf.o blfchk.o ecmtabgen.o hexln.o filehex.o pwblfchk.o
 OBJ_UTIL = hex.o bloom.o mmapf.o hsearchf.o ec_pubkey_fast.o ripemd160_256.o dldummy.o
 OBJ_ALGO = $(patsubst %.c,%.o,$(wildcard algo/*.c))
 OBJECTS = $(OBJ_MAIN) $(OBJ_UTIL) $(OBJ_ALGO)
-BINARIES = brainflayer hexln hex2blf blfchk ecmtabgen filehex
+BINARIES = brainflayer hexln hex2blf blfchk ecmtabgen filehex pwblfchk
 LIBS = -lssl -lrt -lcrypto -lz -lgmp -lpthread
 ARCH_CFLAGS ?= -march=native -mtune=native
 CFLAGS = -O3 \
@@ -15,9 +15,10 @@ COMPILE = gcc $(CFLAGS)
 
 all: $(BINARIES)
 
-test: hex2blf blfchk brainflayer
+test: hex2blf blfchk brainflayer pwblfchk
 	./tests/test_hex2blf_input_types.sh
 	./tests/test_brainflayer_bloom.sh
+	./tests/test_pwblfchk.sh
 
 .git:
 	@echo 'This does not look like a cloned git repo. Unable to fetch submodules.'
@@ -58,6 +59,9 @@ hexln: hexln.o hex.o
 	$(COMPILE) $^ $(LIBS) -o $@
 
 blfchk: blfchk.o hex.o bloom.o mmapf.o hsearchf.o
+	$(COMPILE) $^ $(LIBS) -o $@
+
+pwblfchk: pwblfchk.o bloom.o mmapf.o
 	$(COMPILE) $^ $(LIBS) -o $@
 
 hex2blf: hex2blf.o hex.o bloom.o mmapf.o
