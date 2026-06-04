@@ -518,6 +518,81 @@ inline static void fprintresult(FILE *f, hash160_t *hash,
           input);
 }
 
+static void crack_derived_input(FILE *ofile,
+                                FILE *ffile,
+                                pubhashfn_t *pubhashfn,
+                                int boptn,
+                                int fopt_enabled,
+                                int tty,
+                                int dedupe_found_inputs,
+                                found_input_set_t *found_inputs,
+                                uint64_t *olines,
+                                const unsigned char *pass_input,
+                                size_t pass_input_sz,
+                                unsigned char *pass_type,
+                                const unsigned char *exp_input,
+                                size_t exp_input_sz,
+                                unsigned char *exp_type) {
+  unsigned char pass_priv[32];
+  unsigned char exp_priv[32];
+  unsigned char pass_upub[65];
+  unsigned char exp_upub[65];
+  unsigned char *attempt_upub[2];
+  unsigned char *attempt_type[2];
+  const unsigned char *attempt_input[2];
+  size_t attempt_input_sz[2];
+  int attempt_count = 0;
+
+  if (pass_input != NULL && pass_type != NULL) {
+    if (!dedupe_found_inputs || !found_input_set_contains(found_inputs, pass_input, pass_input_sz)) {
+      pass2priv(pass_priv, (unsigned char *)pass_input, pass_input_sz);
+      priv2pub(pass_upub, pass_priv);
+      attempt_upub[attempt_count] = pass_upub;
+      attempt_type[attempt_count] = pass_type;
+      attempt_input[attempt_count] = pass_input;
+      attempt_input_sz[attempt_count] = pass_input_sz;
+      ++attempt_count;
+    }
+  }
+
+  if (exp_input != NULL && exp_type != NULL) {
+    if ((!dedupe_found_inputs || !found_input_set_contains(found_inputs, exp_input, exp_input_sz)) &&
+        parse_secret_exponent(exp_priv, (unsigned char *)exp_input, exp_input_sz)) {
+      priv2pub(exp_upub, exp_priv);
+      attempt_upub[attempt_count] = exp_upub;
+      attempt_type[attempt_count] = exp_type;
+      attempt_input[attempt_count] = exp_input;
+      attempt_input_sz[attempt_count] = exp_input_sz;
+      ++attempt_count;
+    }
+  }
+
+  for (int attempt = 0; attempt < attempt_count; ++attempt) {
+    int seen = 0;
+    for (int j = 0; pubhashfn[j].fn != NULL; ++j) {
+      hash160_t derived_hash160;
+      pubhashfn[j].fn(&derived_hash160, attempt_upub[attempt]);
+
+      for (int k = 0; k < boptn; ++k) {
+        bloom = blooms[k];
+        if (!bloom_chk_hash160(bloom, derived_hash160.ul)) { continue; }
+
+        if (!fopt_enabled || hsearchf(ffile, &derived_hash160)) {
+          if (tty) { fprintf(ofile, "\033[0K"); }
+          if (dedupe_found_inputs && !seen) {
+            found_input_set_add(found_inputs, attempt_input[attempt], attempt_input_sz[attempt]);
+            seen = 1;
+          }
+          fprintresult(ofile, &derived_hash160, pubhashfn[j].id,
+                       attempt_type[attempt], (unsigned char *)attempt_input[attempt]);
+          ++(*olines);
+          break;
+        }
+      }
+    }
+  }
+}
+
 void usage(unsigned char *name) {
   printf("Usage: %s [OPTION]...\n\n\
  -a                          open output file in append mode\n\
@@ -1023,12 +1098,14 @@ int main(int argc, char **argv) {
         unsigned char exponent_priv[32];
         unsigned char exponent_upub[65];
         unsigned char *attempt_upub[2];
+        unsigned char *attempt_priv[2];
         unsigned char *attempt_type[2];
         int attempt_count = 1;
         int matched = 0;
         int is_valid_exponent = 0;
 
         attempt_upub[0] = batch_upub[i];
+        attempt_priv[0] = batch_priv[i];
         attempt_type[0] = dual_sha256_mode ? (unsigned char *)"passphrase" : modestr;
 
         if (dual_sha256_mode) {
@@ -1038,6 +1115,7 @@ int main(int argc, char **argv) {
         if (is_valid_exponent) {
           priv2pub(exponent_upub, exponent_priv);
           attempt_upub[1] = exponent_upub;
+          attempt_priv[1] = exponent_priv;
           attempt_type[1] = (unsigned char *)"exponent";
           attempt_count = 2;
         }
@@ -1054,15 +1132,12 @@ int main(int argc, char **argv) {
 
               if (!fopt || hsearchf(ffile, &hash160)) {
                 unsigned char chained_input[41];
-                unsigned char chained_priv[32];
-                unsigned char chained_upub[65];
-                unsigned char chained_exponent_priv[32];
-                unsigned char chained_exponent_upub[65];
-                unsigned char *chained_attempt_upub[2];
-                unsigned char *chained_attempt_type[2];
+                unsigned char cpub[33];
+                unsigned char cpub_hex[67];
+                unsigned char cpub_x_hex[65];
+                unsigned char upub_hex[131];
+                unsigned char priv_hex[65];
                 size_t chained_input_sz = 0;
-                int chained_seen = 0;
-                int chained_attempt_count = 1;
 
                 if (tty) { fprintf(ofile, "\033[0K"); }
                 // reformat/populate the line if required
@@ -1080,45 +1155,32 @@ int main(int argc, char **argv) {
                 hex(hash160.uc, sizeof(hash160.uc), chained_input, sizeof(chained_input));
                 chained_input_sz = strlen((char *)chained_input);
 
-                if (!dedupe_found_inputs ||
-                    !found_input_set_contains(&found_inputs, chained_input, chained_input_sz)) {
-                  pass2priv(chained_priv, chained_input, chained_input_sz);
-                  priv2pub(chained_upub, chained_priv);
-                  chained_attempt_upub[0] = chained_upub;
-                  chained_attempt_type[0] = (unsigned char *)"passphrase";
+                crack_derived_input(ofile, ffile, pubhashfn, boptn, fopt != NULL, tty,
+                                    dedupe_found_inputs, &found_inputs, &olines,
+                                    chained_input, chained_input_sz, (unsigned char *)"passphrase",
+                                    chained_input, chained_input_sz, (unsigned char *)"exponent");
 
-                  if (parse_secret_exponent(chained_exponent_priv, chained_input, chained_input_sz)) {
-                    priv2pub(chained_exponent_upub, chained_exponent_priv);
-                    chained_attempt_upub[1] = chained_exponent_upub;
-                    chained_attempt_type[1] = (unsigned char *)"exponent";
-                    chained_attempt_count = 2;
-                  }
+                cpub[0] = 0x02 | (attempt_upub[attempt][64] & 0x01);
+                memcpy(cpub + 1, attempt_upub[attempt] + 1, 32);
+                hex(cpub, sizeof(cpub), cpub_hex, sizeof(cpub_hex));
+                hex(cpub + 1, 32, cpub_x_hex, sizeof(cpub_x_hex));
+                hex(attempt_upub[attempt], 65, upub_hex, sizeof(upub_hex));
+                hex(attempt_priv[attempt], 32, priv_hex, sizeof(priv_hex));
 
-                  for (int chained_attempt = 0; chained_attempt < chained_attempt_count; ++chained_attempt) {
-                    for (int chained_j = 0; pubhashfn[chained_j].fn != NULL; ++chained_j) {
-                      hash160_t chained_hash160;
+                crack_derived_input(ofile, ffile, pubhashfn, boptn, fopt != NULL, tty,
+                                    dedupe_found_inputs, &found_inputs, &olines,
+                                    cpub_hex, strlen((char *)cpub_hex), (unsigned char *)"cpub-passphrase",
+                                    cpub_x_hex, strlen((char *)cpub_x_hex), (unsigned char *)"cpub-exponent");
 
-                      pubhashfn[chained_j].fn(&chained_hash160, chained_attempt_upub[chained_attempt]);
+                crack_derived_input(ofile, ffile, pubhashfn, boptn, fopt != NULL, tty,
+                                    dedupe_found_inputs, &found_inputs, &olines,
+                                    upub_hex, strlen((char *)upub_hex), (unsigned char *)"upub-passphrase",
+                                    NULL, 0, NULL);
 
-                      for (int chained_k = 0; chained_k < boptn; ++chained_k) {
-                        bloom = blooms[chained_k];
-                        if (!bloom_chk_hash160(bloom, chained_hash160.ul)) { continue; }
-
-                        if (!fopt || hsearchf(ffile, &chained_hash160)) {
-                          if (tty) { fprintf(ofile, "\033[0K"); }
-                          if (dedupe_found_inputs && !chained_seen) {
-                            found_input_set_add(&found_inputs, chained_input, chained_input_sz);
-                            chained_seen = 1;
-                          }
-                          fprintresult(ofile, &chained_hash160, pubhashfn[chained_j].id,
-                                       chained_attempt_type[chained_attempt], chained_input);
-                          ++olines;
-                          break;
-                        }
-                      }
-                    }
-                  }
-                }
+                crack_derived_input(ofile, ffile, pubhashfn, boptn, fopt != NULL, tty,
+                                    dedupe_found_inputs, &found_inputs, &olines,
+                                    priv_hex, strlen((char *)priv_hex), (unsigned char *)"privkey-passphrase",
+                                    NULL, 0, NULL);
                 break;
               }
             }

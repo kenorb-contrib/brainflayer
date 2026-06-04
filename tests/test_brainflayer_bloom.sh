@@ -18,6 +18,10 @@ HASH_COMP="fa19739677ed143ba2dcabf535aebc043cd40cdc"
 ADDR_COMP="1PoQRMsXyQFSqCCRek7tt7umfRkJG9TY8x"
 HASH_UNCOMP="e8fdc3b4b312ee8725fab4937901752704ede7f4"
 ADDR_UNCOMP="1NEwmNSC7w9nZeASngHCd43Bc5eC2FmXpn"
+PRIV1_COMP_PUB="0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+PRIV1_COMP_X="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+PRIV1_UNCOMP_PUB="0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+PRIV1_HEX_PAD="0000000000000000000000000000000000000000000000000000000000000001"
 
 assert_found() {
   local name="$1"
@@ -243,5 +247,45 @@ if ! echo "$t16_out" | grep -Fq "$CHAIN_EXP_HASH_COMP:c:exponent:$CHAIN_INPUT"; 
   exit 1
 fi
 echo "  PASS [chain-exponent]: found hash160 checked as exponent"
+
+# ── Test 17: derived pubkey/privkey inputs are also checked and logged ─────────
+HASH_CPUB_PASS="$(printf '%s\n' "$PRIV1_COMP_PUB" | ./brainflayer -c c 2>/dev/null | head -n1 | cut -d: -f1)"
+HASH_CPUB_EXP="$(printf '%s\n' "$PRIV1_COMP_X" | ./brainflayer -x -t priv -c c 2>/dev/null | head -n1 | cut -d: -f1)"
+HASH_UPUB_PASS="$(printf '%s\n' "$PRIV1_UNCOMP_PUB" | ./brainflayer -c c 2>/dev/null | head -n1 | cut -d: -f1)"
+HASH_PRIV_PASS="$(printf '%s\n' "$PRIV1_HEX_PAD" | ./brainflayer -c c 2>/dev/null | head -n1 | cut -d: -f1)"
+
+printf '%s\n%s\n%s\n%s\n%s\n' \
+  "$HASH_PRIV1_COMP" \
+  "$HASH_CPUB_PASS" \
+  "$HASH_CPUB_EXP" \
+  "$HASH_UPUB_PASS" \
+  "$HASH_PRIV_PASS" > "$TMP_DIR/t17_hashes.txt"
+./hex2blf -t h "$TMP_DIR/t17_hashes.txt" "$TMP_DIR/t17.blf" >/dev/null 2>&1
+
+t17_found="$TMP_DIR/t17_found.txt"
+rm -f "$t17_found"
+printf '%s\n' "1" | ./brainflayer -c c -b "$TMP_DIR/t17.blf" -o "$t17_found" 2>/dev/null || true
+
+if ! grep -Fqx "$HASH_CPUB_PASS:c:cpub-passphrase:$PRIV1_COMP_PUB" "$t17_found"; then
+  echo "FAIL [derived/cpub-passphrase]: compressed pubkey as passphrase not found" >&2
+  echo "  Output: $(cat "$t17_found")" >&2
+  exit 1
+fi
+if ! grep -Fqx "$HASH_CPUB_EXP:c:cpub-exponent:$PRIV1_COMP_X" "$t17_found"; then
+  echo "FAIL [derived/cpub-exponent]: compressed pubkey as exponent not found" >&2
+  echo "  Output: $(cat "$t17_found")" >&2
+  exit 1
+fi
+if ! grep -Fqx "$HASH_UPUB_PASS:c:upub-passphrase:$PRIV1_UNCOMP_PUB" "$t17_found"; then
+  echo "FAIL [derived/upub-passphrase]: uncompressed pubkey as passphrase not found" >&2
+  echo "  Output: $(cat "$t17_found")" >&2
+  exit 1
+fi
+if ! grep -Fqx "$HASH_PRIV_PASS:c:privkey-passphrase:$PRIV1_HEX_PAD" "$t17_found"; then
+  echo "FAIL [derived/privkey-passphrase]: private key as passphrase not found" >&2
+  echo "  Output: $(cat "$t17_found")" >&2
+  exit 1
+fi
+echo "  PASS [derived-inputs]: compressed/uncompressed pubkey and private key paths logged to file"
 
 echo "OK: brainflayer bloom filter tests passed"
