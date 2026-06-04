@@ -128,6 +128,10 @@ Brainflayer supports a few other types of input via the `-t` option:
             option if you want to crack a bunch of sequential keys, which has
             special speed optimizations.
 
+* `-t wif` Wallet Import Format (WIF) private keys (Base58Check text, with
+            checksum validation). Use this when your input lines look like
+            `5...`, `K...`, or `L...`. Do not combine with `-x`.
+
 * `-t warp` salts or passwords/passphrases for WarpWallet
 
 * `-t bwio` salts or passwords/passphrases for brainwallet.io

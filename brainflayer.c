@@ -384,6 +384,65 @@ static int rawpriv2priv(unsigned char *priv, unsigned char *rawpriv, size_t rawp
   return 0;
 }
 
+/* Base58Check decode buffer for WIF parsing math. */
+#define MAX_B58_DECODED_LEN 64
+static const size_t max_wif_len = 52;
+
+static int b58_value(unsigned char c) {
+  static const char *alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const char *p = strchr(alphabet, c);
+  return p ? (int)(p - alphabet) : -1;
+}
+
+static int parse_wif_priv(unsigned char *priv, const unsigned char *str, size_t str_sz) {
+  size_t i, j, leading_ones = 0, leading_zeros = 0, payload_len, decoded_len;
+  int carry, v;
+  unsigned char decoded[MAX_B58_DECODED_LEN] = {0};
+  unsigned char payload[38];
+  unsigned char digest[SHA256_DIGEST_LENGTH];
+
+  if (str_sz < 51 || str_sz > max_wif_len) { return -1; }
+
+  for (i = 0; i < str_sz && str[i] == '1'; ++i) { ++leading_ones; }
+
+  for (i = 0; i < str_sz; ++i) {
+    v = b58_value(str[i]);
+    if (v < 0) { return -1; }
+    carry = v;
+    for (j = sizeof(decoded); j-- > 0;) {
+      carry += 58 * decoded[j];
+      decoded[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    if (carry != 0) { return -1; }
+  }
+
+  for (i = 0; i < sizeof(decoded) && decoded[i] == 0; ++i) { ++leading_zeros; }
+
+  decoded_len = sizeof(decoded) - leading_zeros;
+  payload_len = leading_ones + decoded_len;
+  if (payload_len != 37 && payload_len != 38) { return -1; }
+  if (leading_ones > sizeof(payload) || decoded_len > sizeof(payload) - leading_ones) { return -1; }
+
+  memset(payload, 0, leading_ones);
+  memcpy(payload + leading_ones, decoded + leading_zeros, decoded_len);
+
+  SHA256(payload, payload_len - 4, digest);
+  SHA256(digest, SHA256_DIGEST_LENGTH, digest);
+  if (memcmp(payload + payload_len - 4, digest, 4) != 0) { return -1; }
+
+  /* 0x80=mainnet, 0xef=testnet. */
+  if (payload[0] != 0x80 && payload[0] != 0xef) { return -1; }
+  if (payload_len == 38 && payload[33] != 0x01) { return -1; }
+
+  memcpy(priv, payload + 1, 32);
+  return 0;
+}
+
+static int wif2priv(unsigned char *priv, unsigned char *wif, size_t wif_sz) {
+  return parse_wif_priv(priv, wif, wif_sz);
+}
+
 static unsigned char *kdfsalt;
 static size_t kdfsalt_sz;
 
@@ -616,6 +675,7 @@ void usage(unsigned char *name) {
                              sha256 (default) - classic brainwallet\n\
                              sha3   - sha3-256\n\
                              priv   - raw private keys (requires -x)\n\
+                             wif    - WIF private keys (base58check)\n\
                              warp   - WarpWallet (supports -s or -p)\n\
                              bwio   - brainwallet.io (supports -s or -p)\n\
                              bv2    - brainv2 (supports -s or -p) VERY SLOW\n\
@@ -886,6 +946,11 @@ int main(int argc, char **argv) {
       bail(1, "raw private key input requires -x");
     }
     input2priv = &rawpriv2priv;
+  } else if (strcmp(topt, "wif") == 0) {
+    if (xopt) {
+      bail(1, "WIF private key input is base58 text and does not support -x");
+    }
+    input2priv = &wif2priv;
   } else if (strcmp(topt, "warp") == 0) {
     if (!Bopt) { Bopt = 1; } // don't batch transform for slow input hashes by default
     spok = 1;

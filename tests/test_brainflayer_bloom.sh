@@ -22,6 +22,8 @@ PRIV1_COMP_PUB="0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817
 PRIV1_COMP_X="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 PRIV1_UNCOMP_PUB="0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
 PRIV1_HEX_PAD="0000000000000000000000000000000000000000000000000000000000000001"
+WIF_PRIV1_UNCOMP="5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDf"
+WIF_PRIV1_COMP="KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn"
 
 assert_found() {
   local name="$1"
@@ -287,5 +289,30 @@ if ! grep -Fqx "$HASH_PRIV_PASS:c:privkey-passphrase:$PRIV1_HEX_PAD" "$t17_found
   exit 1
 fi
 echo "  PASS [derived-inputs]: compressed/uncompressed pubkey and private key paths logged to file"
+
+# ── Test 18: WIF input (compressed) in -t wif mode ─────────────────────────────
+t18_out="$(printf '%s\n' "$WIF_PRIV1_COMP" | ./brainflayer -t wif -c c -b "$TMP_DIR/t8.blf" 2>/dev/null || true)"
+if ! echo "$t18_out" | grep -Fqx "$HASH_PRIV1_COMP:c:wif:$WIF_PRIV1_COMP"; then
+  echo "FAIL [wif/compressed]: compressed WIF did not match expected hash/type" >&2
+  echo "  Output: $t18_out" >&2
+  exit 1
+fi
+echo "  PASS [wif/compressed]: compressed WIF accepted"
+
+# ── Test 19: WIF input (uncompressed) in -t wif mode ───────────────────────────
+t19_out="$(printf '%s\n' "$WIF_PRIV1_UNCOMP" | ./brainflayer -t wif -c u -b "$TMP_DIR/t11_both.blf" 2>/dev/null || true)"
+if ! echo "$t19_out" | grep -Fqx "$HASH_PRIV1_UNCOMP:u:wif:$WIF_PRIV1_UNCOMP"; then
+  echo "FAIL [wif/uncompressed]: uncompressed WIF did not match expected hash/type" >&2
+  echo "  Output: $t19_out" >&2
+  exit 1
+fi
+echo "  PASS [wif/uncompressed]: uncompressed WIF accepted"
+
+# ── Test 20: WIF mode must reject -x hex mode ───────────────────────────────────
+if printf '%s\n' "$WIF_PRIV1_COMP" | ./brainflayer -x -t wif -c c -b "$TMP_DIR/t8.blf" >/dev/null 2>&1; then
+  echo "FAIL [wif/reject-hex]: -t wif must fail when used with -x" >&2
+  exit 1
+fi
+echo "  PASS [wif/reject-hex]: -x correctly rejected for WIF input"
 
 echo "OK: brainflayer bloom filter tests passed"
