@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <signal.h>
 #include <stdio.h>
 #include <fcntl.h>
@@ -38,12 +39,30 @@
 // Number of supported bloom files.
 #define BOPT_MAX 10
 
+#define FOUND_INPUT_SET_INITIAL_BUCKET_COUNT 1024
+#define FOUND_INPUT_SET_MAX_LOAD_NUMERATOR 3
+#define FOUND_INPUT_SET_MAX_LOAD_DENOMINATOR 4
+#define FNV1A_OFFSET_BASIS_64 1469598103934665603ULL
+#define FNV1A_PRIME_64 1099511628211ULL
+
 static int brainflayer_is_init = 0;
 
 typedef struct pubhashfn_s {
    void (*fn)(hash160_t *, const unsigned char *);
    char id;
 } pubhashfn_t;
+
+typedef struct found_input_entry_s {
+  unsigned char *input;
+  size_t input_sz;
+  struct found_input_entry_s *next;
+} found_input_entry_t;
+
+typedef struct found_input_set_s {
+  found_input_entry_t **buckets;
+  size_t bucket_count;
+  size_t count;
+} found_input_set_t;
 
 static unsigned char *mem;
 
@@ -96,6 +115,126 @@ static inline void brainflayer_init_globals() {
     /* set the flag */
     brainflayer_is_init = 1;
   }
+}
+
+static size_t hash_input_bytes(const unsigned char *input, size_t input_sz) {
+  size_t hash = FNV1A_OFFSET_BASIS_64;
+
+  for (size_t i = 0; i < input_sz; ++i) {
+    hash ^= input[i];
+    hash *= FNV1A_PRIME_64;
+  }
+
+  return hash;
+}
+
+static void found_input_set_init(found_input_set_t *set, size_t bucket_count) {
+  set->bucket_count = bucket_count;
+  set->count = 0;
+  set->buckets = chkmalloc(bucket_count * sizeof(*set->buckets));
+  memset(set->buckets, 0, bucket_count * sizeof(*set->buckets));
+}
+
+static int found_input_set_contains(const found_input_set_t *set, const unsigned char *input, size_t input_sz) {
+  size_t bucket_idx;
+  found_input_entry_t *entry;
+
+  if (set->bucket_count == 0) {
+    return 0;
+  }
+
+  bucket_idx = hash_input_bytes(input, input_sz) % set->bucket_count;
+  entry = set->buckets[bucket_idx];
+
+  while (entry != NULL) {
+    if (entry->input_sz == input_sz && memcmp(entry->input, input, input_sz) == 0) {
+      return 1;
+    }
+    entry = entry->next;
+  }
+
+  return 0;
+}
+
+static void found_input_set_grow(found_input_set_t *set) {
+  size_t old_bucket_count = set->bucket_count;
+  found_input_entry_t **old_buckets = set->buckets;
+
+  found_input_set_init(set, old_bucket_count * 2);
+
+  for (size_t i = 0; i < old_bucket_count; ++i) {
+    found_input_entry_t *entry = old_buckets[i];
+    while (entry != NULL) {
+      found_input_entry_t *next = entry->next;
+      size_t bucket_idx = hash_input_bytes(entry->input, entry->input_sz) % set->bucket_count;
+      entry->next = set->buckets[bucket_idx];
+      set->buckets[bucket_idx] = entry;
+      ++set->count;
+      entry = next;
+    }
+  }
+
+  free(old_buckets);
+}
+
+static void found_input_set_add(found_input_set_t *set, const unsigned char *input, size_t input_sz) {
+  size_t bucket_idx;
+  found_input_entry_t *entry;
+
+  if (set->bucket_count == 0) {
+    found_input_set_init(set, FOUND_INPUT_SET_INITIAL_BUCKET_COUNT);
+  } else if (set->count * FOUND_INPUT_SET_MAX_LOAD_DENOMINATOR >=
+             set->bucket_count * FOUND_INPUT_SET_MAX_LOAD_NUMERATOR) {
+    found_input_set_grow(set);
+  }
+
+  bucket_idx = hash_input_bytes(input, input_sz) % set->bucket_count;
+  entry = chkmalloc(sizeof(*entry));
+  entry->input = chkmalloc(input_sz + 1);
+  memcpy(entry->input, input, input_sz);
+  entry->input[input_sz] = 0;
+  entry->input_sz = input_sz;
+  entry->next = set->buckets[bucket_idx];
+  set->buckets[bucket_idx] = entry;
+  ++set->count;
+}
+
+static void load_found_inputs_from_file(found_input_set_t *set, const char *filename) {
+  FILE *f;
+  char *line = NULL;
+  size_t line_sz = 0;
+  ssize_t n;
+
+  f = fopen(filename, "r");
+  if (f == NULL) {
+    return; /* file doesn't exist yet, that's fine */
+  }
+
+  while ((n = getline(&line, &line_sz, f)) > 0) {
+    char *p;
+    int colons = 0;
+
+    /* strip trailing newline/cr */
+    if (n > 0 && line[n - 1] == '\n') { line[--n] = 0; }
+    if (n > 0 && line[n - 1] == '\r') { line[--n] = 0; }
+
+    /* format: hash160:compressed:type:input – skip to 4th field */
+    p = line;
+    while (*p && colons < 3) {
+      if (*p == ':') { ++colons; }
+      ++p;
+    }
+
+    if (colons < 3 || *p == '\0') {
+      continue; /* malformed or empty input field */
+    }
+
+    /* p now points to the input value; load it as a seen entry */
+    found_input_set_add(set, (const unsigned char *)p, strlen(p));
+  }
+
+  free(line);
+  fclose(f);
 }
 
 // function pointers
@@ -245,8 +384,106 @@ static int rawpriv2priv(unsigned char *priv, unsigned char *rawpriv, size_t rawp
   return 0;
 }
 
+/* Base58Check decode buffer for WIF parsing math. */
+#define MAX_B58_DECODED_LEN 64
+static const size_t max_wif_len = 52;
+
+static int b58_value(unsigned char c) {
+  static const char *alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const char *p = strchr(alphabet, c);
+  return p ? (int)(p - alphabet) : -1;
+}
+
+static int parse_wif_priv(unsigned char *priv, const unsigned char *str, size_t str_sz) {
+  size_t i, j, leading_ones = 0, leading_zeros = 0, payload_len, decoded_len;
+  int carry, v;
+  unsigned char decoded[MAX_B58_DECODED_LEN] = {0};
+  unsigned char payload[38];
+  unsigned char digest[SHA256_DIGEST_LENGTH];
+
+  if (str_sz < 51 || str_sz > max_wif_len) { return -1; }
+
+  for (i = 0; i < str_sz && str[i] == '1'; ++i) { ++leading_ones; }
+
+  for (i = 0; i < str_sz; ++i) {
+    v = b58_value(str[i]);
+    if (v < 0) { return -1; }
+    carry = v;
+    for (j = sizeof(decoded); j-- > 0;) {
+      carry += 58 * decoded[j];
+      decoded[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    if (carry != 0) { return -1; }
+  }
+
+  for (i = 0; i < sizeof(decoded) && decoded[i] == 0; ++i) { ++leading_zeros; }
+
+  decoded_len = sizeof(decoded) - leading_zeros;
+  payload_len = leading_ones + decoded_len;
+  if (payload_len != 37 && payload_len != 38) { return -1; }
+  if (leading_ones > sizeof(payload) || decoded_len > sizeof(payload) - leading_ones) { return -1; }
+
+  memset(payload, 0, leading_ones);
+  memcpy(payload + leading_ones, decoded + leading_zeros, decoded_len);
+
+  SHA256(payload, payload_len - 4, digest);
+  SHA256(digest, SHA256_DIGEST_LENGTH, digest);
+  if (memcmp(payload + payload_len - 4, digest, 4) != 0) { return -1; }
+
+  /* 0x80=mainnet, 0xef=testnet. */
+  if (payload[0] != 0x80 && payload[0] != 0xef) { return -1; }
+  if (payload_len == 38 && payload[33] != 0x01) { return -1; }
+
+  memcpy(priv, payload + 1, 32);
+  return 0;
+}
+
+static int wif2priv(unsigned char *priv, unsigned char *wif, size_t wif_sz) {
+  return parse_wif_priv(priv, wif, wif_sz);
+}
+
 static unsigned char *kdfsalt;
 static size_t kdfsalt_sz;
+
+static int parse_secret_exponent(unsigned char *priv, unsigned char *input, size_t input_sz) {
+  size_t i;
+  size_t hex_sz;
+  size_t out_sz;
+  unsigned char hexed[64];
+
+  if (input_sz < 1 || input_sz > 64) {
+    return 0;
+  }
+
+  for (i = 0; i < input_sz; ++i) {
+    if (!isxdigit(input[i])) {
+      return 0;
+    }
+  }
+
+  memset(priv, 0, 32);
+
+  if (input_sz & 1) {
+    hexed[0] = '0';
+    memcpy(hexed + 1, input, input_sz);
+    hex_sz = input_sz + 1;
+  } else {
+    memcpy(hexed, input, input_sz);
+    hex_sz = input_sz;
+  }
+
+  out_sz = hex_sz / 2;
+  unhex(hexed, hex_sz, priv + (32 - out_sz), out_sz);
+  return 1;
+}
+
+static int sha256exp2priv(unsigned char *priv, unsigned char *input, size_t input_sz) {
+  if (input_sz < 4 || input_sz > 64) {
+    return -1;
+  }
+  return parse_secret_exponent(priv, input, input_sz) ? 0 : -1;
+}
 
 static int warppass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   int ret;
@@ -347,6 +584,81 @@ inline static void fprintresult(FILE *f, hash160_t *hash,
           input);
 }
 
+static void crack_derived_input(FILE *ofile,
+                                FILE *ffile,
+                                pubhashfn_t *pubhashfn,
+                                int boptn,
+                                int fopt_enabled,
+                                int tty,
+                                int dedupe_found_inputs,
+                                found_input_set_t *found_inputs,
+                                uint64_t *olines,
+                                const unsigned char *pass_input,
+                                size_t pass_input_sz,
+                                unsigned char *pass_type,
+                                const unsigned char *exp_input,
+                                size_t exp_input_sz,
+                                unsigned char *exp_type) {
+  unsigned char pass_priv[32];
+  unsigned char exp_priv[32];
+  unsigned char pass_upub[65];
+  unsigned char exp_upub[65];
+  unsigned char *attempt_upub[2];
+  unsigned char *attempt_type[2];
+  const unsigned char *attempt_input[2];
+  size_t attempt_input_sz[2];
+  int attempt_count = 0;
+
+  if (pass_input != NULL && pass_type != NULL) {
+    if (!dedupe_found_inputs || !found_input_set_contains(found_inputs, pass_input, pass_input_sz)) {
+      pass2priv(pass_priv, (unsigned char *)pass_input, pass_input_sz);
+      priv2pub(pass_upub, pass_priv);
+      attempt_upub[attempt_count] = pass_upub;
+      attempt_type[attempt_count] = pass_type;
+      attempt_input[attempt_count] = pass_input;
+      attempt_input_sz[attempt_count] = pass_input_sz;
+      ++attempt_count;
+    }
+  }
+
+  if (exp_input != NULL && exp_type != NULL) {
+    if ((!dedupe_found_inputs || !found_input_set_contains(found_inputs, exp_input, exp_input_sz)) &&
+        parse_secret_exponent(exp_priv, (unsigned char *)exp_input, exp_input_sz)) {
+      priv2pub(exp_upub, exp_priv);
+      attempt_upub[attempt_count] = exp_upub;
+      attempt_type[attempt_count] = exp_type;
+      attempt_input[attempt_count] = exp_input;
+      attempt_input_sz[attempt_count] = exp_input_sz;
+      ++attempt_count;
+    }
+  }
+
+  for (int attempt = 0; attempt < attempt_count; ++attempt) {
+    int seen = 0;
+    for (int j = 0; pubhashfn[j].fn != NULL; ++j) {
+      hash160_t derived_hash160;
+      pubhashfn[j].fn(&derived_hash160, attempt_upub[attempt]);
+
+      for (int k = 0; k < boptn; ++k) {
+        bloom = blooms[k];
+        if (!bloom_chk_hash160(bloom, derived_hash160.ul)) { continue; }
+
+        if (!fopt_enabled || hsearchf(ffile, &derived_hash160)) {
+          if (tty) { fprintf(ofile, "\033[0K"); }
+          if (dedupe_found_inputs && !seen) {
+            found_input_set_add(found_inputs, attempt_input[attempt], attempt_input_sz[attempt]);
+            seen = 1;
+          }
+          fprintresult(ofile, &derived_hash160, pubhashfn[j].id,
+                       attempt_type[attempt], (unsigned char *)attempt_input[attempt]);
+          ++(*olines);
+          break;
+        }
+      }
+    }
+  }
+}
+
 void usage(unsigned char *name) {
   printf("Usage: %s [OPTION]...\n\n\
  -a                          open output file in append mode\n\
@@ -368,8 +680,10 @@ void usage(unsigned char *name) {
                              (option is ignored in hex mode)\n\
  -t TYPE                     inputs are TYPE - supported types:\n\
                              sha256 (default) - classic brainwallet\n\
+                             sha256exp - precomputed sha256 hex exponent (4..64)\n\
                              sha3   - sha3-256\n\
                              priv   - raw private keys (requires -x)\n\
+                             wif    - WIF private keys (base58check)\n\
                              warp   - WarpWallet (supports -s or -p)\n\
                              bwio   - brainwallet.io (supports -s or -p)\n\
                              bv2    - brainv2 (supports -s or -p) VERY SLOW\n\
@@ -421,6 +735,9 @@ int main(int argc, char **argv) {
 
   int spok = 0, aopt = 0, boptn = 0, vopt = 0, wopt = 19, xopt = 0;
   int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Copt = 0, Nopt = 2;
+  int dual_sha256_mode = 0;
+  int skip_invalid_input = 0;
+  int dedupe_found_inputs = 1;
   uint64_t kopt = 0;
   unsigned char *bopts[BOPT_MAX];
   unsigned char *iopt = NULL, *oopt = NULL;
@@ -430,6 +747,7 @@ int main(int argc, char **argv) {
 
   unsigned char priv[64];
   hash160_t hash160;
+  found_input_set_t found_inputs = {0};
   pubhashfn_t pubhashfn[8];
   memset(pubhashfn, 0, sizeof(pubhashfn));
 
@@ -592,6 +910,10 @@ int main(int argc, char **argv) {
     if (!nopt_mod) { nopt_mod = 1; };
   }
 
+  if (Iopt) {
+    dedupe_found_inputs = 0;
+  }
+
 
   /* handle copt */
   if (copt == NULL) { copt = "uc"; }
@@ -625,11 +947,25 @@ int main(int argc, char **argv) {
 
   if (strcmp(topt, "sha256") == 0) {
     input2priv = &pass2priv;
+    if (!xopt) {
+      dual_sha256_mode = 1;
+    }
+  } else if (strcmp(topt, "sha256exp") == 0) {
+    if (xopt) {
+      bail(1, "sha256exp input is hex text and does not support -x");
+    }
+    input2priv = &sha256exp2priv;
+    skip_invalid_input = 1;
   } else if (strcmp(topt, "priv") == 0) {
     if (!xopt) {
       bail(1, "raw private key input requires -x");
     }
     input2priv = &rawpriv2priv;
+  } else if (strcmp(topt, "wif") == 0) {
+    if (xopt) {
+      bail(1, "WIF private key input is base58 text and does not support -x");
+    }
+    input2priv = &wif2priv;
   } else if (strcmp(topt, "warp") == 0) {
     if (!Bopt) { Bopt = 1; } // don't batch transform for slow input hashes by default
     spok = 1;
@@ -737,8 +1073,14 @@ int main(int argc, char **argv) {
     posix_fadvise(fileno(ifile), 0, 0, POSIX_FADV_SEQUENTIAL);
   }
 
-  if (oopt && (ofile = fopen(oopt, (aopt ? "a" : "w"))) == NULL) {
-    bail(1, "failed to open '%s' for writing: %s\n", oopt, strerror(errno));
+  if (oopt) {
+    /* load previously found inputs so they are not written again */
+    if (dedupe_found_inputs) {
+      load_found_inputs_from_file(&found_inputs, oopt);
+    }
+    if ((ofile = fopen(oopt, "a")) == NULL) {
+      bail(1, "failed to open '%s' for writing: %s\n", oopt, strerror(errno));
+    }
   }
 
   /* line buffer output */
@@ -809,10 +1151,18 @@ int main(int argc, char **argv) {
           // rewrite the input line from hex
           unhex(batch_line[i], batch_line_read[i], unhexed, unhexed_sz);
           if (input2priv(batch_priv[i], unhexed, batch_line_read[i]/2) != 0) {
+            if (skip_invalid_input) {
+              --i;
+              continue;
+            }
             fprintf(stderr, "input2priv failed! continuing...\n");
           }
         } else {
           if (input2priv(batch_priv[i], batch_line[i], batch_line_read[i]) != 0) {
+            if (skip_invalid_input) {
+              --i;
+              continue;
+            }
             fprintf(stderr, "input2priv failed! continuing...\n");
           }
         }
@@ -828,49 +1178,99 @@ int main(int argc, char **argv) {
     // loop over the public keys
     for (i = 0; i < batch_stopped; ++i) {
       if (boptn > 0) { /* crack mode */
-        // loop over pubkey hash functions
-        for (j = 0; pubhashfn[j].fn != NULL; ++j) {
-          pubhashfn[j].fn(&hash160, batch_upub[i]);
+        if (dedupe_found_inputs &&
+            found_input_set_contains(&found_inputs, batch_line[i], batch_line_read[i])) {
+          continue;
+        }
 
-          for (int k = 0; k < boptn; k++) {
-            unsigned int bit;
-            bloom = blooms[k];
-            bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH20(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH21(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH22(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH23(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-            bit = BH24(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
+        unsigned char exponent_priv[32];
+        unsigned char exponent_upub[65];
+        unsigned char *attempt_upub[2];
+        unsigned char *attempt_priv[2];
+        unsigned char *attempt_type[2];
+        int attempt_count = 1;
+        int matched = 0;
+        int is_valid_exponent = 0;
 
-            if (!fopt || hsearchf(ffile, &hash160)) {
-              if (tty) { fprintf(ofile, "\033[0K"); }
-              // reformat/populate the line if required
-              if (Iopt) {
-                hex(batch_priv[i], 32, batch_line[i], 65);
+        attempt_upub[0] = batch_upub[i];
+        attempt_priv[0] = batch_priv[i];
+        attempt_type[0] = dual_sha256_mode ? (unsigned char *)"passphrase" : modestr;
+
+        if (dual_sha256_mode) {
+          is_valid_exponent = parse_secret_exponent(exponent_priv, batch_line[i], batch_line_read[i]);
+        }
+
+        if (is_valid_exponent) {
+          priv2pub(exponent_upub, exponent_priv);
+          attempt_upub[1] = exponent_upub;
+          attempt_priv[1] = exponent_priv;
+          attempt_type[1] = (unsigned char *)"exponent";
+          attempt_count = 2;
+        }
+
+        for (int attempt = 0; attempt < attempt_count && !matched; ++attempt) {
+          // loop over all pubkey hash functions (u, c, e, x)
+          // matched only blocks moving to the next attempt, not the next pubhashfn
+          for (j = 0; pubhashfn[j].fn != NULL; ++j) {
+            pubhashfn[j].fn(&hash160, attempt_upub[attempt]);
+
+            for (int k = 0; k < boptn; k++) {
+              bloom = blooms[k];
+              if (!bloom_chk_hash160(bloom, hash160.ul)) { continue; }
+
+              if (!fopt || hsearchf(ffile, &hash160)) {
+                unsigned char chained_input[41];
+                unsigned char cpub[33];
+                unsigned char cpub_hex[67];
+                unsigned char cpub_x_hex[65];
+                unsigned char upub_hex[131];
+                unsigned char priv_hex[65];
+                size_t chained_input_sz = 0;
+
+                if (tty) { fprintf(ofile, "\033[0K"); }
+                // reformat/populate the line if required
+                if (Iopt) {
+                  hex(batch_priv[i], 32, batch_line[i], 65);
+                }
+                if (dedupe_found_inputs && !matched) {
+                  found_input_set_add(&found_inputs, batch_line[i], batch_line_read[i]);
+                }
+                fprintresult(ofile, &hash160, pubhashfn[j].id, attempt_type[attempt], batch_line[i]);
+                ++olines;
+                matched = 1;
+
+                /* chain match: take found hash160 hex and test it as a passphrase */
+                hex(hash160.uc, sizeof(hash160.uc), chained_input, sizeof(chained_input));
+                chained_input_sz = strlen((char *)chained_input);
+
+                crack_derived_input(ofile, ffile, pubhashfn, boptn, fopt != NULL, tty,
+                                    dedupe_found_inputs, &found_inputs, &olines,
+                                    chained_input, chained_input_sz, (unsigned char *)"passphrase",
+                                    chained_input, chained_input_sz, (unsigned char *)"exponent");
+
+                cpub[0] = 0x02 | (attempt_upub[attempt][64] & 0x01);
+                memcpy(cpub + 1, attempt_upub[attempt] + 1, 32);
+                hex(cpub, sizeof(cpub), cpub_hex, sizeof(cpub_hex));
+                hex(cpub + 1, 32, cpub_x_hex, sizeof(cpub_x_hex));
+                hex(attempt_upub[attempt], 65, upub_hex, sizeof(upub_hex));
+                hex(attempt_priv[attempt], 32, priv_hex, sizeof(priv_hex));
+
+                crack_derived_input(ofile, ffile, pubhashfn, boptn, fopt != NULL, tty,
+                                    dedupe_found_inputs, &found_inputs, &olines,
+                                    cpub_hex, strlen((char *)cpub_hex), (unsigned char *)"cpub-passphrase",
+                                    cpub_x_hex, strlen((char *)cpub_x_hex), (unsigned char *)"cpub-exponent");
+
+                crack_derived_input(ofile, ffile, pubhashfn, boptn, fopt != NULL, tty,
+                                    dedupe_found_inputs, &found_inputs, &olines,
+                                    upub_hex, strlen((char *)upub_hex), (unsigned char *)"upub-passphrase",
+                                    NULL, 0, NULL);
+
+                crack_derived_input(ofile, ffile, pubhashfn, boptn, fopt != NULL, tty,
+                                    dedupe_found_inputs, &found_inputs, &olines,
+                                    priv_hex, strlen((char *)priv_hex), (unsigned char *)"privkey-passphrase",
+                                    NULL, 0, NULL);
+                break;
               }
-              fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
-              ++olines;
-              k = boptn; // End a for loop.
-              break;
             }
           }
         }

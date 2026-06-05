@@ -64,6 +64,21 @@ Precompute the bloom filter:
 
 `hex2blf example.hex example.blf`
 
+`hex2blf` accepts input types selected via `-t`:
+
+* `h` — hash160 in hex (40 chars)
+* `a` — Bitcoin Base58Check addresses
+* `c` — compressed public key in hex (33 bytes / 66 chars, prefix `02`/`03`)
+* `u` — uncompressed public key in hex (65 bytes / 130 chars, prefix `04`)
+
+Examples:
+
+* `hex2blf -t h example.hex example.blf`
+* `hex2blf -t a addresses.txt example.blf`
+* `hex2blf -t cu pubkeys.txt example.blf`
+
+Default mode is `-t ha`.
+
 Run Brainflayer against it:
 
 `brainflayer -v -b example.blf -i phraselist.txt`
@@ -112,6 +127,14 @@ Brainflayer supports a few other types of input via the `-t` option:
             brainflayer's output as well, for reference. See also the `-I`
             option if you want to crack a bunch of sequential keys, which has
             special speed optimizations.
+
+* `-t wif` Wallet Import Format (WIF) private keys (Base58Check text, with
+            checksum validation). Use this when your input lines look like
+            `5...`, `K...`, or `L...`. Do not combine with `-x`.
+
+* `-t sha256exp` treat each input line as an already computed SHA256 hex value
+                and use it directly as a secret exponent (valid length: 4..64
+                hex chars). Invalid lines are skipped.
 
 * `-t warp` salts or passwords/passphrases for WarpWallet
 
@@ -183,6 +206,19 @@ Supported build target is currently Ubuntu 20.04 on amd64/x86_64. Issues with
 building for other platforms probably won’t be fixed. In particular, Kali Linux
 is *not* supported. Support for operating systems other than Linux would require
 extensive refactoring of Brainflayer's memory optimizations and is not happening.
+
+For maximum throughput on the machine doing the build, the default `make`
+configuration now enables CPU-local tuning flags (`-march=native -mtune=native`)
+and passes the same tuning into the bundled secp256k1 and scrypt-jane builds.
+If you need a more portable binary, override it explicitly:
+
+```
+make ARCH_CFLAGS=
+```
+
+To chase higher aggregate rates such as tens of millions of passphrases per
+second, use multiple brainflayer processes in parallel with `-n K/N` so each
+core works on its own shard of the input.
 
 Redistribution of compiled `brainflayer` binaries is prohibited, and
 unauthorized binaries probably contain malware.
