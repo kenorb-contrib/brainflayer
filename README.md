@@ -132,6 +132,10 @@ Brainflayer supports a few other types of input via the `-t` option:
             checksum validation). Use this when your input lines look like
             `5...`, `K...`, or `L...`. Do not combine with `-x`.
 
+* `-t sha256exp` treat each input line as an already computed SHA256 hex value
+                and use it directly as a secret exponent (valid length: 4..64
+                hex chars). Invalid lines are skipped.
+
 * `-t warp` salts or passwords/passphrases for WarpWallet
 
 * `-t bwio` salts or passwords/passphrases for brainwallet.io

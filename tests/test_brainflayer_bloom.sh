@@ -315,4 +315,46 @@ if printf '%s\n' "$WIF_PRIV1_COMP" | ./brainflayer -x -t wif -c c -b "$TMP_DIR/t
 fi
 echo "  PASS [wif/reject-hex]: -x correctly rejected for WIF input"
 
+# ── Test 21: sha256exp mode accepts valid hex exponents (4..64 chars) ──────────
+t21_short_out="$(printf '%s\n' "0001" | ./brainflayer -t sha256exp -c c -b "$TMP_DIR/t8.blf" 2>/dev/null || true)"
+if ! echo "$t21_short_out" | grep -Fqx "$HASH_PRIV1_COMP:c:sha256exp:0001"; then
+  echo "FAIL [sha256exp/len4]: expected match for 4-char exponent" >&2
+  echo "  Output: $t21_short_out" >&2
+  exit 1
+fi
+t21_long_out="$(printf '%s\n' "$PRIV1_HEX_PAD" | ./brainflayer -t sha256exp -c c -b "$TMP_DIR/t8.blf" 2>/dev/null || true)"
+if ! echo "$t21_long_out" | grep -Fqx "$HASH_PRIV1_COMP:c:sha256exp:$PRIV1_HEX_PAD"; then
+  echo "FAIL [sha256exp/len64]: expected match for 64-char exponent" >&2
+  echo "  Output: $t21_long_out" >&2
+  exit 1
+fi
+echo "  PASS [sha256exp/valid-range]: 4-char and 64-char exponents accepted"
+
+# ── Test 22: sha256exp mode silently skips invalid lines ────────────────────────
+LONG_HEX_65="$(printf 'a%.0s' $(seq 1 65))"
+t22_out="$TMP_DIR/t22_sha256exp.out"
+t22_err="$TMP_DIR/t22_sha256exp.err"
+{
+  printf '%s\n' "zzzz"       # invalid hex symbols
+  printf '%s\n' "123"        # too short
+  printf '%s\n' "$LONG_HEX_65" # too long
+  printf '%s\n' "0001"       # valid
+} | ./brainflayer -t sha256exp -c c -b "$TMP_DIR/t8.blf" >"$t22_out" 2>"$t22_err" || true
+if ! grep -Fqx "$HASH_PRIV1_COMP:c:sha256exp:0001" "$t22_out"; then
+  echo "FAIL [sha256exp/skip-invalid]: valid line was not matched" >&2
+  echo "  Output: $(cat "$t22_out")" >&2
+  exit 1
+fi
+if [ "$(grep -Ec '^[0-9a-f]{40}:' "$t22_out")" -ne 1 ]; then
+  echo "FAIL [sha256exp/skip-invalid]: unexpected extra matches from invalid lines" >&2
+  echo "  Output: $(cat "$t22_out")" >&2
+  exit 1
+fi
+if grep -Fq "input2priv failed" "$t22_err"; then
+  echo "FAIL [sha256exp/skip-invalid]: invalid lines should be skipped silently" >&2
+  echo "  Stderr: $(cat "$t22_err")" >&2
+  exit 1
+fi
+echo "  PASS [sha256exp/skip-invalid]: invalid lines skipped silently"
+
 echo "OK: brainflayer bloom filter tests passed"

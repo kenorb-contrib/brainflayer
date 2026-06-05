@@ -478,6 +478,13 @@ static int parse_secret_exponent(unsigned char *priv, unsigned char *input, size
   return 1;
 }
 
+static int sha256exp2priv(unsigned char *priv, unsigned char *input, size_t input_sz) {
+  if (input_sz < 4 || input_sz > 64) {
+    return -1;
+  }
+  return parse_secret_exponent(priv, input, input_sz) ? 0 : -1;
+}
+
 static int warppass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
   int ret;
   if ((ret = warpwallet(pass, pass_sz, kdfsalt, kdfsalt_sz, priv)) != 0) return ret;
@@ -673,6 +680,7 @@ void usage(unsigned char *name) {
                              (option is ignored in hex mode)\n\
  -t TYPE                     inputs are TYPE - supported types:\n\
                              sha256 (default) - classic brainwallet\n\
+                             sha256exp - precomputed sha256 hex exponent (4..64)\n\
                              sha3   - sha3-256\n\
                              priv   - raw private keys (requires -x)\n\
                              wif    - WIF private keys (base58check)\n\
@@ -728,6 +736,7 @@ int main(int argc, char **argv) {
   int spok = 0, aopt = 0, boptn = 0, vopt = 0, wopt = 19, xopt = 0;
   int nopt_mod = 0, nopt_rem = 0, Bopt = 0, Copt = 0, Nopt = 2;
   int dual_sha256_mode = 0;
+  int skip_invalid_input = 0;
   int dedupe_found_inputs = 1;
   uint64_t kopt = 0;
   unsigned char *bopts[BOPT_MAX];
@@ -941,6 +950,12 @@ int main(int argc, char **argv) {
     if (!xopt) {
       dual_sha256_mode = 1;
     }
+  } else if (strcmp(topt, "sha256exp") == 0) {
+    if (xopt) {
+      bail(1, "sha256exp input is hex text and does not support -x");
+    }
+    input2priv = &sha256exp2priv;
+    skip_invalid_input = 1;
   } else if (strcmp(topt, "priv") == 0) {
     if (!xopt) {
       bail(1, "raw private key input requires -x");
@@ -1136,10 +1151,18 @@ int main(int argc, char **argv) {
           // rewrite the input line from hex
           unhex(batch_line[i], batch_line_read[i], unhexed, unhexed_sz);
           if (input2priv(batch_priv[i], unhexed, batch_line_read[i]/2) != 0) {
+            if (skip_invalid_input) {
+              --i;
+              continue;
+            }
             fprintf(stderr, "input2priv failed! continuing...\n");
           }
         } else {
           if (input2priv(batch_priv[i], batch_line[i], batch_line_read[i]) != 0) {
+            if (skip_invalid_input) {
+              --i;
+              continue;
+            }
             fprintf(stderr, "input2priv failed! continuing...\n");
           }
         }
